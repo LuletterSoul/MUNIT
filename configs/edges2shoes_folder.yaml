@@ -10,7 +10,7 @@ log_iter: 10                  # How often do you want to log the training stats
 
 # optimization options
 max_iter: 1000000             # maximum number of training iterations
-batch_size: 1                 # batch size
+batch_size:   4               # batch size
 weight_decay: 0.0001          # weight decay
 beta1: 0.5                    # Adam parameter
 beta2: 0.999                  # Adam parameter
@@ -37,6 +37,7 @@ gen:
   pad_type: reflect           # padding type [zero/reflect]
 dis:
   dim: 64                     # number of filters in the bottommost layer
+  style_dim: 256
   norm: none                  # normalization layer [none/bn/in/ln]
   activ: lrelu                # activation function [relu/lrelu/prelu/selu/tanh]
   n_layer: 4                  # number of layers in D
@@ -52,3 +53,5 @@ new_size: 256                               # first resize the shortest image si
 crop_image_height: 256                      # random crop image of this height
 crop_image_width: 256                       # random crop image of this width
 data_root: ./datasets/edges2shoes/     # dataset folder location
+gen_type: sanet
+logs: ./logs/0710_MUNIT
