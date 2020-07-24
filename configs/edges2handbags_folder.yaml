@@ -54,4 +54,4 @@ crop_image_height: 256                      # random crop image of this height
 crop_image_width: 256                       # random crop image of this width
 data_root: ./datasets/edges2handbags/     # dataset folder location
 gen_type: sanet
-logs: ./logs/0710_MUNIT
+logs: ./logs/0719_sanet_handbags
