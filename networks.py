@@ -214,17 +214,23 @@ class SAGen(nn.Module):
         activ = params['activ']
         pad_type = params['pad_type']
         mlp_dim = params['mlp_dim']
+        self.style_encoder_type = params['style_encoder_type']
+        self.style_code_dim = params['style_code_dim']
+        n_blk = params['n_blk']
 
         # style encoder
-        self.enc_style = MirrorStyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
+        if self.style_encoder_type == 'mirror':
+            self.enc_style = MirrorStyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
+        elif self.style_encoder_type == 'mapping':
+            self.enc_style = StyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
 
         # content encoder
         self.enc_content = ContentEncoder(n_downsample, n_res, input_dim, dim, 'in', activ, pad_type=pad_type)
         self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='none', activ=activ,
                            pad_type=pad_type)
         self.sanet = SANet(self.enc_content.output_dim, self.enc_content.output_dim, self.enc_content.output_dim)
-        # MLP to generate AdaIN parameters
-        # self.mlp = MLP(style_dim, self.get_num_adain_params(self.dec), mlp_dim, 3, norm='none', activ=activ)
+        # MLP to generate style distribution
+        self.mlp = MLP(style_dim, self.style_code_dim, mlp_dim, n_blk, norm='none', activ=activ)
 
     def forward(self, images):
         # reconstruct an image
@@ -232,10 +238,18 @@ class SAGen(nn.Module):
         images_recon = self.decode(content, style_fake)
         return images_recon
 
+    def mapping(self, content, style):
+        assert content.view(1, -1).size() == style.view(1, -1).size()
+        style = self.mlp(style)
+        return style.view_as(content)
+
     def encode(self, images):
         # encode an image to its content and style codes
         style_fake = self.enc_style(images)
         content = self.enc_content(images)
+        # generate a better style distribution from mapping network instead of Gaussian Distribution
+        if self.style_encoder_type == 'mapping':
+            style_fake = self.mlp(content, style_fake)
         return content, style_fake
 
     def decode(self, content, style):
@@ -291,7 +305,8 @@ class VAEGen(nn.Module):
                            pad_type=pad_type)
 
     def forward(self, images):
-        # This is a reduced VAE implementation where we assume the outputs are multivariate Gaussian distribution with mean = hiddens and std_dev = all ones.
+        # This is a reduced VAE implementation where we assume the outputs are
+        # multivariate Gaussian distribution with mean = hiddens and std_dev = all ones.
         hiddens = self.encode(images)
         if self.training == True:
             noise = Variable(torch.randn(hiddens.size()).cuda(hiddens.data.get_device()))

@@ -430,6 +430,7 @@ class SANET_Trainer(nn.Module):
         self.instancenorm = nn.InstanceNorm2d(512, affine=False)
         self.content_output_dim = self.gen_a.enc_content.output_dim
         self.style_dim = hyperparameters['gen']['style_dim']
+        self.style_encoder_type = hyperparameters['gen']['style_encoder_type']
         # fix the noise used in sampling
         display_size = int(hyperparameters['display_size'])
         # self.s_a = torch.randn(display_size, self.style_dim, 1, 1).cuda()
@@ -479,8 +480,7 @@ class SANET_Trainer(nn.Module):
         self.gen_opt.zero_grad()
         # s_a = Variable(torch.randn(x_a.size(0), self.style_dim, 1, 1).cuda())
         # s_b = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
-        s_a = Variable(torch.randn(x_a.size(0), self.content_output_dim, 64, 64).cuda())
-        s_b = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
+        s_a, s_b = self.sample_style_code(x_a, x_b)
         # encode
         c_a, s_a_prime = self.gen_a.encode(x_a)
         c_b, s_b_prime = self.gen_b.encode(x_b)
@@ -541,6 +541,17 @@ class SANET_Trainer(nn.Module):
         self.gen_opt.step()
         # return loss_dict
 
+    def sample_style_code(self, x_a, x_b):
+        if self.style_encoder_type == 'mirror':
+            s_a = Variable(torch.randn(x_a.size(0), self.content_output_dim, 64, 64).cuda())
+            s_b = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
+        elif self.style_encoder_type == 'mapping':
+            s_a = Variable(torch.randn(x_a.size(0), self.style_dim, 1, 1).cuda())
+            s_b = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
+            s_a = self.gen_a.mlp(s_a)
+            s_b = self.gen_b.mlp(s_b)
+        return s_a, s_b
+
     def compute_vgg_loss(self, vgg, img, target):
         img_vgg = vgg_preprocess(img)
         target_vgg = vgg_preprocess(target)
@@ -554,8 +565,9 @@ class SANET_Trainer(nn.Module):
         s_b1 = Variable(self.s_b)
         # s_a2 = Variable(torch.randn(x_a.size(0), self.style_dim, 1, 1).cuda())
         # s_b2 = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
-        s_a2 = Variable(torch.randn(x_a.size(0), self.content_output_dim, 64, 64).cuda())
-        s_b2 = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
+        # s_a2 = Variable(torch.randn(x_a.size(0), self.content_output_dim, 64, 64).cuda())
+        # s_b2 = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
+        s_a2, s_b2 = self.sample_style_code(x_a, x_b)
         x_a_recon, x_b_recon, x_ba1, x_ba2, x_ab1, x_ab2 = [], [], [], [], [], []
         for i in range(x_a.size(0)):
             c_a, s_a_fake = self.gen_a.encode(x_a[i].unsqueeze(0))
