@@ -150,7 +150,6 @@ class AdaINGen(nn.Module):
         pad_type = params['pad_type']
         mlp_dim = params['mlp_dim']
 
-        self.enc_style = None
         self.enc_style = StyleEncoder(4, input_dim, dim, style_dim, norm='none', activ=activ, pad_type=pad_type)
         # content encoder
         self.enc_content = ContentEncoder(n_downsample, n_res, input_dim, dim, 'in', activ, pad_type=pad_type)
@@ -213,16 +212,19 @@ class SAGen(nn.Module):
         n_res = params['n_res']
         activ = params['activ']
         pad_type = params['pad_type']
-        mlp_dim = params['mlp_dim']
+        self.mlp_dim = params['mlp_dim']
+        self.style_dim = params['style_dim']
         self.style_encoder_type = params['style_encoder_type']
         self.style_code_dim = params['style_code_dim']
-        n_blk = params['n_blk']
+        self.n_blk = params['n_blk']
+        self.activ= params['activ']
 
         # style encoder
         if self.style_encoder_type == 'mirror':
             self.enc_style = MirrorStyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
         elif self.style_encoder_type == 'mapping':
-            self.enc_style = StyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
+            self.enc_style = StyleEncoder(4, input_dim, dim, style_dim, norm='none', activ=activ, pad_type=pad_type)
+            # self.enc_style = StyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
 
         # content encoder
         self.enc_content = ContentEncoder(n_downsample, n_res, input_dim, dim, 'in', activ, pad_type=pad_type)
@@ -230,7 +232,7 @@ class SAGen(nn.Module):
                            pad_type=pad_type)
         self.sanet = SANet(self.enc_content.output_dim, self.enc_content.output_dim, self.enc_content.output_dim)
         # MLP to generate style distribution
-        self.mlp = MLP(style_dim, self.style_code_dim, mlp_dim, n_blk, norm='none', activ=activ)
+        self.mlp = MLP(self.style_dim, 1048576, self.mlp_dim, 3, norm='none', activ=self.activ)
 
     def forward(self, images):
         # reconstruct an image
@@ -240,6 +242,7 @@ class SAGen(nn.Module):
 
     def mapping(self, content, style):
         assert content.view(1, -1).size() == style.view(1, -1).size()
+        assert self.mlp is not None
         style = self.mlp(style)
         return style.view_as(content)
 
@@ -249,7 +252,12 @@ class SAGen(nn.Module):
         content = self.enc_content(images)
         # generate a better style distribution from mapping network instead of Gaussian Distribution
         if self.style_encoder_type == 'mapping':
-            style_fake = self.mlp(content, style_fake)
+            # calculate content code dim dynamically
+            # if self.mlp is None:
+            #     C, H, W = content.size()[1:]
+            #     output_dim = C * H * W
+            #     print(f'mlp output dim is {output_dim}')
+            style_fake = self.mlp(style_fake).view_as(content)
         return content, style_fake
 
     def decode(self, content, style):

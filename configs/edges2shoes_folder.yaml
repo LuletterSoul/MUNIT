@@ -10,7 +10,7 @@ log_iter: 10                  # How often do you want to log the training stats
 
 # optimization options
 max_iter: 1000000             # maximum number of training iterations
-batch_size:   4               # batch size
+batch_size:   2               # batch size
 weight_decay: 0.0001          # weight decay
 beta1: 0.5                    # Adam parameter
 beta2: 0.999                  # Adam parameter
@@ -35,6 +35,9 @@ gen:
   n_downsample: 2             # number of downsampling layers in content encoder
   n_res: 4                    # number of residual blocks in content encoder/decoder
   pad_type: reflect           # padding type [zero/reflect]
+  style_encoder_type: mapping
+  style_code_dim: 256 * 64 * 64
+  n_blk: 4
 dis:
   dim: 64                     # number of filters in the bottommost layer
   style_dim: 256
