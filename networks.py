@@ -223,7 +223,10 @@ class SAGen(nn.Module):
         self.mlp = None
         self.enc_style = None
         self.dec = None
+        self.enc_content = None
 
+        # content encoder
+        self.enc_content = ContentEncoder(n_downsample, n_res, input_dim, dim, 'in', activ, pad_type=pad_type)
         # style encoder
         if self.style_encoder_type == 'mirror':
             self.enc_style = MirrorStyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
@@ -246,11 +249,7 @@ class SAGen(nn.Module):
                                                     pad_type=pad_type)
             self.dec = MultiLevelSADecoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='none',
                                            activ=activ,
-                                           pad_type=pad_type,level=self.level)
-
-            # self.enc_style = StyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
-        # content encoder
-        self.enc_content = ContentEncoder(n_downsample, n_res, input_dim, dim, 'in', activ, pad_type=pad_type)
+                                           pad_type=pad_type, level=self.level)
         self.sanet = SANet(self.enc_content.output_dim, self.enc_content.output_dim, self.enc_content.output_dim)
 
     def forward(self, images):
@@ -445,7 +444,8 @@ class MultiLevelSADecoder(nn.Module):
             dim //= 2
         # use reflection padding in the last conv layer
         if 1 + n_upsample < level:
-            self.model += [SAConv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation='tanh', pad_type=pad_type)]
+            self.model += [
+                SAConv2dBlock(dim, output_dim, 7, 1, 3, norm='none', sa='sanet', activation='tanh', pad_type=pad_type)]
         else:
             self.model += [Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation='tanh', pad_type=pad_type)]
 
@@ -537,11 +537,11 @@ class ResBlocks(nn.Module):
 
 
 class SAResBlocks(nn.Module):
-    def __init__(self, style_dim, num_blocks, dim, norm='in', activation='relu', pad_type='zero'):
+    def __init__(self, style_dim, num_blocks, dim, norm='in', sa='none', activation='relu', pad_type='zero'):
         super(SAResBlocks, self).__init__()
         self.model = []
         for i in range(num_blocks):
-            self.model += [SAResBlock(style_dim, dim, activation=activation, pad_type=pad_type)]
+            self.model += [SAResBlock(style_dim, dim, activation=activation, sa=sa, pad_type=pad_type)]
         self.model = nn.Sequential(*self.model)
 
     def forward(self, content):
@@ -582,11 +582,11 @@ class ResBlock(nn.Module):
 
 
 class SAResBlock(nn.Module):
-    def __init__(self, style_dim, dim, activation='relu', pad_type='zero'):
+    def __init__(self, style_dim, dim, activation='relu', sa='none', pad_type='zero'):
         super(SAResBlock, self).__init__()
         model = []
-        model += [SAConv2dBlock(style_dim, dim, dim, 3, 1, 1, activation=activation, pad_type=pad_type)]
-        model += [SAConv2dBlock(style_dim, dim, dim, 3, 1, 1, activation='none', pad_type=pad_type)]
+        model += [SAConv2dBlock(style_dim, dim, dim, 3, 1, 1, sa=sa, activation=activation, pad_type=pad_type)]
+        model += [SAConv2dBlock(style_dim, dim, dim, 3, 1, 1, sa=sa, activation='none', pad_type=pad_type)]
         self.model = nn.Sequential(*model)
 
     def forward(self, content_code):
@@ -659,10 +659,16 @@ class Conv2dBlock(nn.Module):
 
 
 class SAConv2dBlock(nn.Module):
-    def __init__(self, style_dim, input_dim, output_dim, kernel_size, stride,
+    def __init__(self, input_dim, output_dim, kernel_size, stride,
                  padding=0, norm='none', sa='none', activation='relu', pad_type='zero'):
         super(SAConv2dBlock, self).__init__()
         self.use_bias = True
+        print(input_dim)
+        print(output_dim)
+        print(kernel_size)
+        print(stride)
+        print(padding)
+        print(norm)
         # initialize padding
         if pad_type == 'reflect':
             self.pad = nn.ReflectionPad2d(padding)
@@ -674,6 +680,7 @@ class SAConv2dBlock(nn.Module):
             assert 0, "Unsupported padding type: {}".format(pad_type)
         # initialize normalization
         norm_dim = output_dim
+        print(norm)
         if norm == 'bn':
             self.norm = nn.BatchNorm2d(norm_dim)
         elif norm == 'in':
@@ -683,14 +690,14 @@ class SAConv2dBlock(nn.Module):
             self.norm = LayerNorm(norm_dim)
         elif norm == 'adain':
             self.norm = AdaptiveInstanceNorm2d(norm_dim)
-        elif norm == 'none' or norm == 'sn':
+        elif norm == 'none':
             self.norm = None
         else:
             assert 0, "Unsupported normalization: {}".format(norm)
 
-        # initialize style-attention
+        # initialize style-attentiont
         if sa == 'sanet':
-            self.sanet = SANet(output_dim, output_dim, style_dim)
+            self.sanet = SANet(output_dim, output_dim, output_dim)
         else:
             self.sanet = None
 
@@ -715,6 +722,10 @@ class SAConv2dBlock(nn.Module):
             self.conv1 = SpectralNorm(nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias))
             self.conv2 = SpectralNorm(nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias))
         else:
+            print(input_dim)
+            print(output_dim)
+            print(kernel_size)
+            print(stride)
             self.conv1 = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias)
             self.conv2 = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias)
 
