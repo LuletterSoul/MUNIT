@@ -77,20 +77,20 @@ class MUNIT_Trainer(nn.Module):
         # s_a = Variable(torch.randn(x_a.size(0), self.content_output_dim, 64, 64).cuda())
         # s_b = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
         # encode
-        c_a, s_a_prime = self.gen_a.encode(x_a)
-        c_b, s_b_prime = self.gen_b.encode(x_b)
+        c_a, s_a_prime, a_feats = self.gen_a.encode(x_a)
+        c_b, s_b_prime, b_feats = self.gen_b.encode(x_b)
         # decode (within domain)
-        x_a_recon = self.gen_a.decode(c_a, s_a_prime)
-        x_b_recon = self.gen_b.decode(c_b, s_b_prime)
+        x_a_recon = self.gen_a.decode(c_a, s_a_prime, a_feats)
+        x_b_recon = self.gen_b.decode(c_b, s_b_prime, b_feats)
         # decode (cross domain)
-        x_ba = self.gen_a.decode(c_b, s_a)
-        x_ab = self.gen_b.decode(c_a, s_b)
+        x_ba = self.gen_a.decode(c_b, s_a, a_feats)
+        x_ab = self.gen_b.decode(c_a, s_b, b_feats)
         # encode again
-        c_b_recon, s_a_recon = self.gen_a.encode(x_ba)
-        c_a_recon, s_b_recon = self.gen_b.encode(x_ab)
+        c_b_recon, s_a_recon, ba_feats = self.gen_a.encode(x_ba)
+        c_a_recon, s_b_recon, ab_feats = self.gen_b.encode(x_ab)
         # decode again (if needed)
-        x_aba = self.gen_a.decode(c_a_recon, s_a_prime) if hyperparameters['recon_x_cyc_w'] > 0 else None
-        x_bab = self.gen_b.decode(c_b_recon, s_b_prime) if hyperparameters['recon_x_cyc_w'] > 0 else None
+        x_aba = self.gen_a.decode(c_a_recon, s_a_prime, a_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
+        x_bab = self.gen_b.decode(c_b_recon, s_b_prime, b_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
 
         # reconstruction loss
         self.loss_gen_recon_x_a = self.recon_criterion(x_a_recon, x_a)
@@ -487,8 +487,8 @@ class SANET_Trainer(nn.Module):
         self.gen_opt.zero_grad()
         # s_a = Variable(torch.randn(x_a.size(0), self.style_dim, 1, 1).cuda())
         # s_b = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
-        c_a, s_a_prime = self.gen_a.encode(x_a)
-        c_b, s_b_prime = self.gen_b.encode(x_b)
+        c_a, s_a_prime, _ = self.gen_a.encode(x_a)
+        c_b, s_b_prime, _ = self.gen_b.encode(x_b)
 
         s_a, s_b = self.sample_style_code(x_a, x_b, c_a, c_b)
         # encode

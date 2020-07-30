@@ -217,22 +217,41 @@ class SAGen(nn.Module):
         self.style_encoder_type = params['style_encoder_type']
         self.style_code_dim = params['style_code_dim']
         self.n_blk = params['n_blk']
-        self.activ= params['activ']
+        self.activ = params['activ']
+        self.mlp_type = params['mlp_type']
+        self.level = params['level']
+        self.mlp = None
+        self.enc_style = None
+        self.dec = None
 
         # style encoder
         if self.style_encoder_type == 'mirror':
             self.enc_style = MirrorStyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
         elif self.style_encoder_type == 'mapping':
             self.enc_style = StyleEncoder(4, input_dim, dim, style_dim, norm='none', activ=activ, pad_type=pad_type)
-            # self.enc_style = StyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
+            # MLP to generate style distribution
+            if self.mlp_type == 'mlp':
+                print('mlp')
+                self.mlp = MLP(self.style_dim, 1048576, self.mlp_dim, self.n_blk, norm='none', activ=self.activ)
+            elif self.mlp_type == 'conv':
+                print('conv')
+                self.mlp = nn.Sequential(nn.Conv2d(style_dim, self.mlp_dim, kernel_size=3, padding=pad_type),
+                                         nn.Conv2d(self.mlp_dim, 1048576, kernel_size=3, padding=pad_type),
+                                         nn.ReLU())
+            self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='none',
+                               activ=activ,
+                               pad_type=pad_type)
+        elif self.style_encoder_type == 'multi-level':
+            self.enc_style = MultiLevelStyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ,
+                                                    pad_type=pad_type)
+            self.dec = MultiLevelSADecoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='none',
+                                           activ=activ,
+                                           pad_type=pad_type,level=self.level)
 
+            # self.enc_style = StyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
         # content encoder
         self.enc_content = ContentEncoder(n_downsample, n_res, input_dim, dim, 'in', activ, pad_type=pad_type)
-        self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='none', activ=activ,
-                           pad_type=pad_type)
         self.sanet = SANet(self.enc_content.output_dim, self.enc_content.output_dim, self.enc_content.output_dim)
-        # MLP to generate style distribution
-        self.mlp = MLP(self.style_dim, 1048576, self.mlp_dim, 3, norm='none', activ=self.activ)
 
     def forward(self, images):
         # reconstruct an image
@@ -247,23 +266,32 @@ class SAGen(nn.Module):
         return style.view_as(content)
 
     def encode(self, images):
+        content = None
         # encode an image to its content and style codes
-        style_fake = self.enc_style(images)
+        if self.style_encoder_type == 'multi-level':  # use multi-level autoencoders
+            style_fake, style_feats = self.enc_style(images)
+            return content, style_fake, style_feats
+        else:
+            style_fake = self.enc_style(images)
+            # generate a better style distribution from mapping network instead of Gaussian Distribution
+            if self.style_encoder_type == 'mapping':
+                # calculate content code dim dynamically
+                # if self.mlp is None:
+                #     C, H, W = content.size()[1:]
+                #     output_dim = C * H * W
+                #     print(f'mlp output dim is {output_dim}')
+                style_fake = self.mlp(style_fake).view_as(content)
         content = self.enc_content(images)
-        # generate a better style distribution from mapping network instead of Gaussian Distribution
-        if self.style_encoder_type == 'mapping':
-            # calculate content code dim dynamically
-            # if self.mlp is None:
-            #     C, H, W = content.size()[1:]
-            #     output_dim = C * H * W
-            #     print(f'mlp output dim is {output_dim}')
-            style_fake = self.mlp(style_fake).view_as(content)
-        return content, style_fake
+        assert content is not None and style_fake is not None
+        return content, style_fake, None
 
-    def decode(self, content, style):
-        # fuse content features and style features using self-attention mechanism.
-        content = self.sanet(content, style)
-        images = self.dec(content)
+    def decode(self, content, style, feats=None):
+        if self.style_encoder_type == 'multi-level':  # use multi-level autoencoders
+            images = self.dec(content, feats)
+        else:
+            # fuse content features and style features using self-attention mechanism.
+            content = self.sanet(content, style)
+            images = self.dec(content)
         return images
 
     def assign_adain_params(self, adain_params, model):
@@ -372,6 +400,66 @@ class MirrorStyleEncoder(nn.Module):
 
     def forward(self, x):
         return self.model(x)
+
+
+class MultiLevelStyleEncoder(nn.Module):
+    def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type):
+        super(MultiLevelStyleEncoder, self).__init__()
+        self.model = nn.ModuleList(
+            [Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)])
+        # downsampling blocks
+        for i in range(n_downsample):
+            self.model += [Conv2dBlock(dim, 2 * dim, 4, 2, 1, norm=norm, activation=activ, pad_type=pad_type)]
+            dim *= 2
+        # residual blocks
+        self.model += [ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)]
+        self.model = nn.Sequential(*self.model)
+        self.output_dim = dim
+
+    def forward(self, x):
+        feats = []
+        for idx, model in enumerate(self.model):
+            x = model(x)
+            print(f'Layer {idx + 1} Feature Dim: {x.size()}')
+            self.feats.append(x.detach())
+        return x, feats
+
+
+class MultiLevelSADecoder(nn.Module):
+    def __init__(self, n_upsample, n_res, dim, output_dim, res_norm='adain', activ='relu', pad_type='zero', level=1):
+        super(MultiLevelSADecoder, self).__init__()
+        self.level = level
+        # use blocks which integrates style-attention module
+        self.model = nn.ModuleList([SAResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)])
+        assert level <= 2 + n_upsample
+        # upsampling blocks
+        for i in range(n_upsample):
+            if i + 1 < level:
+                self.model += [nn.Upsample(scale_factor=2),
+                               SAConv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', sa='sanet', activation=activ,
+                                             pad_type=pad_type)]
+            else:
+                self.model += [nn.Upsample(scale_factor=2),
+                               Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)]
+
+            dim //= 2
+        # use reflection padding in the last conv layer
+        if 1 + n_upsample < level:
+            self.model += [SAConv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation='tanh', pad_type=pad_type)]
+        else:
+            self.model += [Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation='tanh', pad_type=pad_type)]
+
+    def forward(self, x, feats):
+        """
+        :param x: deep features from the last encoder layer
+        :param feats: deep features from each stage encoder
+        :return:
+        """
+        for idx, model in enumerate(self.model):
+            if idx < self.level:
+                x = model(x, feats[idx])
+        for idx, model in enumerate(self.model[self.level:]):
+            x = model(x)
 
 
 class ContentEncoder(nn.Module):
@@ -572,7 +660,7 @@ class Conv2dBlock(nn.Module):
 
 class SAConv2dBlock(nn.Module):
     def __init__(self, style_dim, input_dim, output_dim, kernel_size, stride,
-                 padding=0, norm='none', activation='relu', pad_type='zero'):
+                 padding=0, norm='none', sa='none', activation='relu', pad_type='zero'):
         super(SAConv2dBlock, self).__init__()
         self.use_bias = True
         # initialize padding
@@ -584,8 +672,27 @@ class SAConv2dBlock(nn.Module):
             self.pad = nn.ZeroPad2d(padding)
         else:
             assert 0, "Unsupported padding type: {}".format(pad_type)
-            # initialize normalization
-        self.sanet = SANet(output_dim, output_dim, style_dim)
+        # initialize normalization
+        norm_dim = output_dim
+        if norm == 'bn':
+            self.norm = nn.BatchNorm2d(norm_dim)
+        elif norm == 'in':
+            # self.norm = nn.InstanceNorm2d(norm_dim, track_running_stats=True)
+            self.norm = nn.InstanceNorm2d(norm_dim)
+        elif norm == 'ln':
+            self.norm = LayerNorm(norm_dim)
+        elif norm == 'adain':
+            self.norm = AdaptiveInstanceNorm2d(norm_dim)
+        elif norm == 'none' or norm == 'sn':
+            self.norm = None
+        else:
+            assert 0, "Unsupported normalization: {}".format(norm)
+
+        # initialize style-attention
+        if sa == 'sanet':
+            self.sanet = SANet(output_dim, output_dim, style_dim)
+        else:
+            self.sanet = None
 
         # initialize activation
         if activation == 'relu':
@@ -605,13 +712,22 @@ class SAConv2dBlock(nn.Module):
 
         # initialize convolution
         if norm == 'sn':
-            self.conv = SpectralNorm(nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias))
+            self.conv1 = SpectralNorm(nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias))
+            self.conv2 = SpectralNorm(nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias))
         else:
-            self.conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias)
+            self.conv1 = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias)
+            self.conv2 = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias)
 
-    def forward(self, content_code):
-        content_code = self.conv(self.pad(content_code))
-        content_code = self.sanet(content_code)
+    def forward(self, content_code, style_code=None):
+        # if provide style code, enable style-attention feature fusion
+        if style_code is not None and self.sanet is not None:
+            content_code = self.conv1(self.pad(content_code))
+            style_code = self.conv2(self.pad(style_code))
+            # the layer level of style code should be the same as the content code one
+            assert content_code.size() == style_code.size()
+            content_code = self.sanet(content_code, style_code)
+        else:
+            content_code = self.conv1(self.pad(content_code))
         if self.activation:
             content_code = self.activation(content_code)
         return content_code
