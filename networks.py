@@ -224,6 +224,7 @@ class SAGen(nn.Module):
         self.enc_style = None
         self.dec = None
         self.enc_content = None
+        self.style_mapping = None
 
         # content encoder
         self.enc_content = ContentEncoder(n_downsample, n_res, input_dim, dim, 'in', activ, pad_type=pad_type)
@@ -244,17 +245,17 @@ class SAGen(nn.Module):
             self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='none',
                                activ=activ,
                                pad_type=pad_type)
+            self.sanet = SANet(self.enc_content.output_dim, self.enc_content.output_dim, self.enc_content.output_dim)
         elif self.style_encoder_type == 'multi-level':
             self.enc_style = MultiLevelStyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ,
-                                                    pad_type=pad_type)
+                                                    pad_type=pad_type, level=self.level)
             self.dec = MultiLevelSADecoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='none',
                                            activ=activ,
                                            pad_type=pad_type, level=self.level)
-        self.sanet = SANet(self.enc_content.output_dim, self.enc_content.output_dim, self.enc_content.output_dim)
 
     def forward(self, images):
         # reconstruct an image
-        content, style_fake = self.encode(images)
+        content, style_fake, _ = self.encode(images)
         images_recon = self.decode(content, style_fake)
         return images_recon
 
@@ -265,7 +266,7 @@ class SAGen(nn.Module):
         return style.view_as(content)
 
     def encode(self, images):
-        content = None
+        content = self.enc_content(images)
         # encode an image to its content and style codes
         if self.style_encoder_type == 'multi-level':  # use multi-level autoencoders
             style_fake, style_feats = self.enc_style(images)
@@ -280,7 +281,6 @@ class SAGen(nn.Module):
                 #     output_dim = C * H * W
                 #     print(f'mlp output dim is {output_dim}')
                 style_fake = self.mlp(style_fake).view_as(content)
-        content = self.enc_content(images)
         assert content is not None and style_fake is not None
         return content, style_fake, None
 
@@ -402,26 +402,39 @@ class MirrorStyleEncoder(nn.Module):
 
 
 class MultiLevelStyleEncoder(nn.Module):
-    def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type):
+    def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type, level):
         super(MultiLevelStyleEncoder, self).__init__()
+        self.level = level
+        self.dims = []
         self.model = nn.ModuleList(
             [Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)])
+        self.dims.append(dim)
+        self.mapping_nets = nn.ModuleList()
         # downsampling blocks
         for i in range(n_downsample):
             self.model += [Conv2dBlock(dim, 2 * dim, 4, 2, 1, norm=norm, activation=activ, pad_type=pad_type)]
             dim *= 2
+            self.dims.append(dim)
         # residual blocks
         self.model += [ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)]
-        self.model = nn.Sequential(*self.model)
+        self.dims.append(dim)
+        for i in range(level):
+            map_dim = self.dims.pop()
+            self.mapping_nets += [
+                Conv2dBlock(map_dim, map_dim, 3, 1, 1, norm=norm, activation=activ, pad_type=pad_type)]
+        # self.model = nn.Sequential(*self.model)
         self.output_dim = dim
 
     def forward(self, x):
         feats = []
         for idx, model in enumerate(self.model):
             x = model(x)
-            print(f'Layer {idx + 1} Feature Dim: {x.size()}')
-            self.feats.append(x.detach())
-        return x, feats
+            feats.append(x)
+        style_feats = []
+        for i in range(self.level):
+            feat = self.mapping_nets[i](feats.pop())
+            style_feats.append(feat)
+        return x, style_feats
 
 
 class MultiLevelSADecoder(nn.Module):
@@ -429,7 +442,8 @@ class MultiLevelSADecoder(nn.Module):
         super(MultiLevelSADecoder, self).__init__()
         self.level = level
         # use blocks which integrates style-attention module
-        self.model = nn.ModuleList([SAResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)])
+        self.model = nn.ModuleList(
+            [SAResBlocks(n_res, dim, norm=res_norm, activation=activ, sa='sanet', pad_type=pad_type)])
         assert level <= 2 + n_upsample
         # upsampling blocks
         for i in range(n_upsample):
@@ -455,11 +469,12 @@ class MultiLevelSADecoder(nn.Module):
         :param feats: deep features from each stage encoder
         :return:
         """
-        for idx, model in enumerate(self.model):
+        for idx, m in enumerate(self.model):
             if idx < self.level:
-                x = model(x, feats[idx])
-        for idx, model in enumerate(self.model[self.level:]):
-            x = model(x)
+                x = m(x, feats[idx])
+        for idx, m in enumerate(self.model[self.level:]):
+            x = m(x)
+        return x
 
 
 class ContentEncoder(nn.Module):
@@ -537,15 +552,17 @@ class ResBlocks(nn.Module):
 
 
 class SAResBlocks(nn.Module):
-    def __init__(self, style_dim, num_blocks, dim, norm='in', sa='none', activation='relu', pad_type='zero'):
+    def __init__(self, num_blocks, dim, norm='in', sa='none', activation='relu', pad_type='zero'):
         super(SAResBlocks, self).__init__()
-        self.model = []
+        self.model = nn.ModuleList()
         for i in range(num_blocks):
-            self.model += [SAResBlock(style_dim, dim, activation=activation, sa=sa, pad_type=pad_type)]
-        self.model = nn.Sequential(*self.model)
+            self.model += [SAResBlock(dim, activation=activation, norm=norm, sa=sa, pad_type=pad_type)]
+        # self.model = nn.Sequential(*self.model)
 
-    def forward(self, content):
-        return self.model(content)
+    def forward(self, content, feats=None):
+        for m in self.model:
+            content = m(content, feats)
+        return content
 
 
 class MLP(nn.Module):
@@ -582,18 +599,19 @@ class ResBlock(nn.Module):
 
 
 class SAResBlock(nn.Module):
-    def __init__(self, style_dim, dim, activation='relu', sa='none', pad_type='zero'):
+    def __init__(self, dim, norm='none', activation='relu', sa='none', pad_type='zero'):
         super(SAResBlock, self).__init__()
-        model = []
-        model += [SAConv2dBlock(style_dim, dim, dim, 3, 1, 1, sa=sa, activation=activation, pad_type=pad_type)]
-        model += [SAConv2dBlock(style_dim, dim, dim, 3, 1, 1, sa=sa, activation='none', pad_type=pad_type)]
-        self.model = nn.Sequential(*model)
+        self.model = nn.ModuleList()
+        self.model += [SAConv2dBlock(dim, dim, 3, 1, 1, norm=norm, sa=sa, activation=activation, pad_type=pad_type)]
+        self.model += [SAConv2dBlock(dim, dim, 3, 1, 1, norm=norm, sa=sa, activation='none', pad_type=pad_type)]
+        # self.model = nn.Sequential(*model)
 
-    def forward(self, content_code):
+    def forward(self, content_code, feats=None):
         residual = content_code
-        out = self.model(content_code)
-        out += residual
-        return out
+        for m in self.model:
+            content_code = m(content_code, feats)
+        content_code += residual
+        return content_code
 
 
 class Conv2dBlock(nn.Module):
@@ -663,12 +681,6 @@ class SAConv2dBlock(nn.Module):
                  padding=0, norm='none', sa='none', activation='relu', pad_type='zero'):
         super(SAConv2dBlock, self).__init__()
         self.use_bias = True
-        print(input_dim)
-        print(output_dim)
-        print(kernel_size)
-        print(stride)
-        print(padding)
-        print(norm)
         # initialize padding
         if pad_type == 'reflect':
             self.pad = nn.ReflectionPad2d(padding)
@@ -680,7 +692,6 @@ class SAConv2dBlock(nn.Module):
             assert 0, "Unsupported padding type: {}".format(pad_type)
         # initialize normalization
         norm_dim = output_dim
-        print(norm)
         if norm == 'bn':
             self.norm = nn.BatchNorm2d(norm_dim)
         elif norm == 'in':
@@ -722,10 +733,6 @@ class SAConv2dBlock(nn.Module):
             self.conv1 = SpectralNorm(nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias))
             self.conv2 = SpectralNorm(nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias))
         else:
-            print(input_dim)
-            print(output_dim)
-            print(kernel_size)
-            print(stride)
             self.conv1 = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias)
             self.conv2 = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias)
 
@@ -733,9 +740,8 @@ class SAConv2dBlock(nn.Module):
         # if provide style code, enable style-attention feature fusion
         if style_code is not None and self.sanet is not None:
             content_code = self.conv1(self.pad(content_code))
-            style_code = self.conv2(self.pad(style_code))
             # the layer level of style code should be the same as the content code one
-            assert content_code.size() == style_code.size()
+            assert content_code.size() == style_code.size(), print(content_code.size,style_code.size())
             content_code = self.sanet(content_code, style_code)
         else:
             content_code = self.conv1(self.pad(content_code))
