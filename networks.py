@@ -231,6 +231,9 @@ class SAGen(nn.Module):
         # style encoder
         if self.style_encoder_type == 'mirror':
             self.enc_style = MirrorStyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
+            self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='none',
+                               activ=activ,
+                               pad_type=pad_type)
         elif self.style_encoder_type == 'mapping':
             self.enc_style = StyleEncoder(4, input_dim, dim, style_dim, norm='none', activ=activ, pad_type=pad_type)
             # MLP to generate style distribution
@@ -245,13 +248,13 @@ class SAGen(nn.Module):
             self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='none',
                                activ=activ,
                                pad_type=pad_type)
-            self.sanet = SANet(self.enc_content.output_dim, self.enc_content.output_dim, self.enc_content.output_dim)
         elif self.style_encoder_type == 'multi-level':
             self.enc_style = MultiLevelStyleEncoder(n_downsample, n_res, input_dim, dim, 'none', activ,
                                                     pad_type=pad_type, level=self.level)
             self.dec = MultiLevelSADecoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='none',
                                            activ=activ,
                                            pad_type=pad_type, level=self.level)
+        self.sanet = SANet(self.enc_content.output_dim, self.enc_content.output_dim, self.enc_content.output_dim)
 
     def forward(self, images):
         # reconstruct an image

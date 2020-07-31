@@ -617,7 +617,7 @@ class SANET_Trainer(nn.Module):
         c_a, s_a_fake, a_feats = self.gen_a.encode(x_a)
         c_b, s_b_fake, b_feats = self.gen_b.encode(x_b)
         x_a_recon, x_b_recon, x_ba1, x_ba2, x_ab1, x_ab2 = [], [], [], [], [], []
-        if self.style_encoder_type == 'mapping':
+        if self.style_encoder_type == 'mapping' or self.style_encoder_type == 'mirror':
             # init style code of A domain and style code of B domain
             if self.s_a is None or self.s_b is None:
                 self.s_a = torch.randn(self.display_size, self.style_dim, 1, 1).cuda()
@@ -630,8 +630,8 @@ class SANET_Trainer(nn.Module):
             # s_b2 = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
             s_a2, s_b2, a2_srn_feats, b2_srn_feats = self.sample_style_code(x_a, x_b, c_a, c_b, a_feats, b_feats)
             for i in range(x_a.size(0)):
-                c_a, s_a_fake = self.gen_a.encode(x_a[i].unsqueeze(0))
-                c_b, s_b_fake = self.gen_b.encode(x_b[i].unsqueeze(0))
+                c_a, s_a_fake, _ = self.gen_a.encode(x_a[i].unsqueeze(0))
+                c_b, s_b_fake, _ = self.gen_b.encode(x_b[i].unsqueeze(0))
                 x_a_recon.append(self.gen_a.decode(c_a, s_a_fake))
                 x_b_recon.append(self.gen_b.decode(c_b, s_b_fake))
                 x_ba1.append(self.gen_a.decode(c_b, s_a1[i].unsqueeze(0)))

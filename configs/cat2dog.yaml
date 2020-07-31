@@ -39,7 +39,9 @@ gen:
   style_code_dim: 256 * 64 * 64
   n_blk: 2
   mlp_type: mlp
+  level: 1
 dis:
+  update_internal: 2
   dim: 64                     # number of filters in the bottommost layer
   style_dim: 256
   norm: none                  # normalization layer [none/bn/in/ln]

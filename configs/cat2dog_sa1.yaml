@@ -10,7 +10,7 @@ log_iter: 10                  # How often do you want to log the training stats
 
 # optimization options
 max_iter: 1000000             # maximum number of training iterations
-batch_size:   4               # batch size
+batch_size:   2               # batch size
 weight_decay: 0.0001          # weight decay
 beta1: 0.5                    # Adam parameter
 beta2: 0.999                  # Adam parameter
@@ -39,8 +39,9 @@ gen:
   style_code_dim: 256 * 64 * 64
   n_blk: 2
   mlp_type: mlp
+  level: 1
 dis:
-  update_internal: 1
+  update_internal: 2
   dim: 64                     # number of filters in the bottommost layer
   style_dim: 256
   norm: none                  # normalization layer [none/bn/in/ln]
@@ -58,5 +59,5 @@ new_size: 256                               # first resize the shortest image si
 crop_image_height: 256                      # random crop image of this height
 crop_image_width: 256                       # random crop image of this width
 data_root: /data/lxd/datasets/AFHQ/     # dataset folder location
-gen_type: munit
+gen_type: sanet
 logs: ./logs/0710_MUNIT

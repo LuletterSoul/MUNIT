@@ -70,8 +70,9 @@ while True:
 
         with Timer("Elapsed time in update: %f"):
             # Main training code
-            dis_loss_dict = trainer.dis_update(images_a, images_b, config)
-            gen_loss_dict = trainer.gen_update(images_a, images_b, config)
+            if iterations % config['dis']['update_internal'] == 0:
+                trainer.dis_update(images_a, images_b, config)
+            trainer.gen_update(images_a, images_b, config)
             torch.cuda.synchronize()
             # logger.add_scalars('loss/gen', gen_loss_dict, iterations + 1)
             # logger.add_scalars('loss/dis', dis_loss_dict, iterations + 1)
