@@ -608,12 +608,22 @@ class SAResBlock(nn.Module):
         self.model = nn.ModuleList()
         self.model += [SAConv2dBlock(dim, dim, 3, 1, 1, norm=norm, sa=sa, activation=activation, pad_type=pad_type)]
         self.model += [SAConv2dBlock(dim, dim, 3, 1, 1, norm=norm, sa=sa, activation='none', pad_type=pad_type)]
+        # initialize style-attentiont
+        if sa == 'sanet':
+            self.sanet = SANet(dim, dim, dim)
+        else:
+            self.sanet = None
         # self.model = nn.Sequential(*model)
 
-    def forward(self, content_code, feats=None):
+    def forward(self, content_code, style_code=None):
+        if style_code is not None and self.sanet is not None:
+            content_code = self.conv1(self.pad(content_code))
+            # the layer level of style code should be the same as the content code one
+            assert content_code.size() == style_code.size(), print(content_code.size, style_code.size())
+            content_code = self.sanet(content_code, style_code)
         residual = content_code
         for m in self.model:
-            content_code = m(content_code, feats)
+            content_code = m(content_code, style_code)
         content_code += residual
         return content_code
 
@@ -710,12 +720,6 @@ class SAConv2dBlock(nn.Module):
         else:
             assert 0, "Unsupported normalization: {}".format(norm)
 
-        # initialize style-attentiont
-        if sa == 'sanet':
-            self.sanet = SANet(output_dim, output_dim, output_dim)
-        else:
-            self.sanet = None
-
         # initialize activation
         if activation == 'relu':
             self.activation = nn.ReLU(inplace=True)
@@ -742,13 +746,7 @@ class SAConv2dBlock(nn.Module):
 
     def forward(self, content_code, style_code=None):
         # if provide style code, enable style-attention feature fusion
-        if style_code is not None and self.sanet is not None:
-            content_code = self.conv1(self.pad(content_code))
-            # the layer level of style code should be the same as the content code one
-            assert content_code.size() == style_code.size(), print(content_code.size,style_code.size())
-            content_code = self.sanet(content_code, style_code)
-        else:
-            content_code = self.conv1(self.pad(content_code))
+        content_code = self.conv1(self.pad(content_code))
         if self.activation:
             content_code = self.activation(content_code)
         return content_code
