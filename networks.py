@@ -435,7 +435,8 @@ class MultiLevelStyleEncoder(nn.Module):
             feats.append(x)
         style_feats = []
         for i in range(self.level):
-            feat = self.mapping_nets[i](feats.pop())
+            # feat = self.mapping_nets[i](feats.pop())
+            feat = feats.pop()
             style_feats.append(feat)
         return x, style_feats
 
