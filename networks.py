@@ -617,7 +617,7 @@ class SAResBlock(nn.Module):
 
     def forward(self, content_code, style_code=None):
         if style_code is not None and self.sanet is not None:
-            content_code = self.conv1(self.pad(content_code))
+            # content_code = self.conv1(self.pad(content_code))
             # the layer level of style code should be the same as the content code one
             assert content_code.size() == style_code.size(), print(content_code.size, style_code.size())
             content_code = self.sanet(content_code, style_code)

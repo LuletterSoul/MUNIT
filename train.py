@@ -54,6 +54,9 @@ train_display_images_b = torch.stack([train_loader_b.dataset[i] for i in range(d
 test_display_images_a = torch.stack([test_loader_a.dataset[i] for i in range(display_size)]).cuda()
 test_display_images_b = torch.stack([test_loader_b.dataset[i] for i in range(display_size)]).cuda()
 
+test_ref_display_images_a = torch.stack([test_loader_a.dataset[display_size + i] for i in range(display_size)]).cuda()
+test_ref_display_images_b = torch.stack([test_loader_b.dataset[display_size + i] for i in range(display_size)]).cuda()
+
 # Setup logger and output folders
 model_name = os.path.splitext(os.path.basename(opts.config))[0]
 train_writer = tensorboardX.SummaryWriter(os.path.join(opts.output_path + "/logs", model_name))
@@ -70,10 +73,17 @@ while True:
 
         with Timer("Elapsed time in update: %f"):
             # Main training code
-            if iterations % config['dis']['update_internal'] == 0:
+            # if iterations % config['dis']['update_internal'] == 0:
+            if iterations < config['dis']['slow_learning_from']:
                 trainer.dis_update(images_a, images_b, config)
-            trainer.gen_update(images_a, images_b, config)
-            torch.cuda.synchronize()
+                trainer.gen_update(images_a, images_b, config)
+                torch.cuda.synchronize()
+            else:
+                if iterations % 10 == 0:
+                    trainer.dis_update(images_a, images_b, config)
+                trainer.gen_update(images_a, images_b, config)
+                torch.cuda.synchronize()
+
             # logger.add_scalars('loss/gen', gen_loss_dict, iterations + 1)
             # logger.add_scalars('loss/dis', dis_loss_dict, iterations + 1)
 
@@ -87,6 +97,8 @@ while True:
             with torch.no_grad():
                 test_image_outputs = trainer.sample(test_display_images_a, test_display_images_b)
                 train_image_outputs = trainer.sample(train_display_images_a, train_display_images_b)
+                test_image_ref_outputs = trainer.sample_ref(test_display_images_a, test_display_images_b,
+                                                            test_ref_display_images_a, test_ref_display_images_b)
             write_2images(test_image_outputs, display_size, image_directory, 'test_%08d' % (iterations + 1))
             write_2images(train_image_outputs, display_size, image_directory, 'train_%08d' % (iterations + 1))
             # HTML

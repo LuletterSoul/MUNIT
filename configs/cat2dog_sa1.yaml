@@ -50,6 +50,7 @@ dis:
   gan_type: lsgan             # GAN loss [lsgan/nsgan]
   num_scales: 3               # number of scales
   pad_type: reflect           # padding type [zero/reflect]
+  slow_learning_from: 50000
 
 # data options
 input_dim_a: 3                              # number of image channels [1/3]

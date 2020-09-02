@@ -672,6 +672,29 @@ class SANET_Trainer(nn.Module):
         self.train()
         return x_a, x_a_recon, x_ab1, x_ab2, x_b, x_b_recon, x_ba1, x_ba2
 
+    def sample_ref(self, x_a, x_b, x_a_ref, x_b_ref):
+        self.eval()
+        x_a_recon, x_b_recon, x_ba1, x_ba2, x_ab1, x_ab2 = [], [], [], [], [], []
+        for i in range(x_a.size(0)):
+            c_a, s_a_fake, _ = self.gen_a.encode(x_a[i].unsqueeze(0))
+            c_b, s_b_fake, _ = self.gen_b.encode(x_b[i].unsqueeze(0))
+            c_ref_a, s_ref_a = self.gen_a.encode(x_a_ref[i].unsqueeze(0))
+            c_ref_b, s_ref_b = self.gen_b.encode(x_b_ref[i].unsqueeze(0))
+            x_a_recon.append(self.gen_a.decode(c_a, s_a_fake))
+            x_b_recon.append(self.gen_b.decode(c_b, s_b_fake))
+            x_ba1.append(self.gen_a.decode(c_b, s_ref_a[i].unsqueeze(0)))
+            # x_ba2.append(self.gen_a.decode(c_b, s_a2[i].unsqueeze(0)))
+            x_ab1.append(self.gen_b.decode(c_a, s_ref_b[i].unsqueeze(0)))
+            # x_ab2.append(self.gen_b.decode(c_a, s_b2[i].unsqueeze(0)))
+        #
+        x_a_recon, x_b_recon = torch.cat(x_a_recon), torch.cat(x_b_recon)
+        # x_ba1, x_ba2 = torch.cat(x_ba1), torch.cat(x_ba2)
+        # x_ab1, x_ab2 = torch.cat(x_ab1), torch.cat(x_ab2)
+        x_ba1 = torch.cat(x_ba1)
+        x_ab1 = torch.cat(x_ab1)
+        self.train()
+        return x_a, x_a_recon, x_ab1, x_b, x_b_recon, x_ba1
+
     def dis_update(self, x_a, x_b, hyperparameters):
         self.dis_opt.zero_grad()
         # s_a = Variable(torch.randn(x_a.size(0), self.style_dim, 1, 1).cuda())
