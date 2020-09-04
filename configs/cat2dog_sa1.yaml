@@ -40,6 +40,7 @@ gen:
   n_blk: 2
   mlp_type: mlp
   level: 1
+  mapping_layers: 3
 dis:
   update_internal: 1
   dim: 64                     # number of filters in the bottommost layer

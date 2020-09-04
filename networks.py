@@ -220,6 +220,7 @@ class SAGen(nn.Module):
         self.activ = params['activ']
         self.mlp_type = params['mlp_type']
         self.level = params['level']
+        self.mapping_layers = params['mapping_layers']
         self.mlp = None
         self.enc_style = None
         self.dec = None
@@ -256,6 +257,14 @@ class SAGen(nn.Module):
                                            pad_type=pad_type, level=self.level)
         self.sanet = SANet(self.enc_content.output_dim, self.enc_content.output_dim, self.enc_content.output_dim)
 
+        self.mapping_nets = []
+        for i in range(self.mapping_layers):
+            self.mapping_nets.append(
+                Conv2dBlock(self.enc_content.output_dim, self.enc_content.output_dim, 3, 1, 1,
+                            activation=activ, pad_type=pad_type)
+            )
+        self.mapping_nets = nn.Sequential(*self.mapping_nets)
+
     def forward(self, images):
         # reconstruct an image
         content, style_fake, _ = self.encode(images)
@@ -276,14 +285,6 @@ class SAGen(nn.Module):
             return content, style_fake, style_feats
         else:
             style_fake = self.enc_style(images)
-            # generate a better style distribution from mapping network instead of Gaussian Distribution
-            if self.style_encoder_type == 'mapping':
-                # calculate content code dim dynamically
-                # if self.mlp is None:
-                #     C, H, W = content.size()[1:]
-                #     output_dim = C * H * W
-                #     print(f'mlp output dim is {output_dim}')
-                style_fake = self.mlp(style_fake).view_as(content)
         assert content is not None and style_fake is not None
         return content, style_fake, None
 
@@ -292,6 +293,16 @@ class SAGen(nn.Module):
             images = self.dec(content, feats)
         else:
             # fuse content features and style features using self-attention mechanism.
+            # generate a better style distribution from mapping network instead of Gaussian Distribution
+            if self.style_encoder_type == 'mapping':
+                # calculate content code dim dynamically
+                # if self.mlp is None:
+                #     C, H, W = content.size()[1:]
+                #     output_dim = C * H * W
+                #     print(f'mlp output dim is {output_dim}')
+                style = self.mlp(style).view_as(content)
+            elif self.style_encoder_type == 'mirror':
+                style = self.mapping_nets(style).view_as(content)
             content = self.sanet(content, style)
             images = self.dec(content)
         return images
