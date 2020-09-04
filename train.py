@@ -100,6 +100,7 @@ while True:
                 test_image_ref_outputs = trainer.sample_ref(test_display_images_a, test_display_images_b,
                                                             test_ref_display_images_a, test_ref_display_images_b)
             write_2images(test_image_outputs, display_size, image_directory, 'test_%08d' % (iterations + 1))
+            write_2images(test_image_ref_outputs, display_size, image_directory, 'test_ref_%08d' % (iterations + 1))
             write_2images(train_image_outputs, display_size, image_directory, 'train_%08d' % (iterations + 1))
             # HTML
             write_html(output_directory + "/index.html", iterations + 1, config['image_save_iter'], 'images')
