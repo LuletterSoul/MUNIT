@@ -221,6 +221,7 @@ class SAGen(nn.Module):
         self.mlp_type = params['mlp_type']
         self.level = params['level']
         self.mapping_layers = params['mapping_layers']
+        self.use_mapping = params['use_mapping']
         self.mlp = None
         self.enc_style = None
         self.dec = None
@@ -302,7 +303,8 @@ class SAGen(nn.Module):
                 #     print(f'mlp output dim is {output_dim}')
                 style = self.mlp(style).view_as(content)
             elif self.style_encoder_type == 'mirror':
-                style = self.mapping_nets(style).view_as(content)
+                if self.use_mapping:
+                    style = self.mapping_nets(style).view_as(content)
             content = self.sanet(content, style)
             images = self.dec(content)
         return images

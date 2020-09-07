@@ -41,6 +41,7 @@ gen:
   mlp_type: mlp
   level: 1
   mapping_layers: 3
+  use_mapping: false
 dis:
   update_internal: 1
   dim: 64                     # number of filters in the bottommost layer
@@ -51,7 +52,7 @@ dis:
   gan_type: lsgan             # GAN loss [lsgan/nsgan]
   num_scales: 3               # number of scales
   pad_type: reflect           # padding type [zero/reflect]
-  slow_learning_from: 50000
+  slow_learning_from: 1100000
 
 # data options
 input_dim_a: 3                              # number of image channels [1/3]
@@ -60,6 +61,6 @@ num_workers: 8                              # number of data loading threads
 new_size: 256                               # first resize the shortest image side to this size
 crop_image_height: 256                      # random crop image of this height
 crop_image_width: 256                       # random crop image of this width
-data_root: ./datasets/summer2winter_yosemite     # dataset folder location
+data_root: datasets/summer2winter_yosemite     # dataset folder location
 gen_type: sanet
 logs: ./logs/0710_MUNIT
