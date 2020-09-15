@@ -43,7 +43,7 @@ gen:
   mapping_layers: 3
   use_mapping: true
 dis:
-  update_internal: 1
+  update_internal: 2
   dim: 64                     # number of filters in the bottommost layer
   style_dim: 256
   norm: none                  # normalization layer [none/bn/in/ln]

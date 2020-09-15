@@ -79,7 +79,7 @@ while True:
                 trainer.gen_update(images_a, images_b, config)
                 torch.cuda.synchronize()
             else:
-                if iterations % 10 == 0:
+                if iterations % config['dis']['update_internal'] == 0:
                     trainer.dis_update(images_a, images_b, config)
                 trainer.gen_update(images_a, images_b, config)
                 torch.cuda.synchronize()

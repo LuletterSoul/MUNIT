@@ -193,15 +193,31 @@ class MUNIT_Trainer(nn.Module):
         # s_a = Variable(torch.randn(x_a.size(0), self.content_output_dim, 64, 64).cuda())
         # s_b = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
         # encode
-        c_a, _ = self.gen_a.encode(x_a)
-        c_b, _ = self.gen_b.encode(x_b)
+        # c_a, _ = self.gen_a.encode(x_a)
+        # c_b, _ = self.gen_b.encode(x_b)
+
+        c_a, s_a_prime = self.gen_a.encode(x_a)
+        c_b, s_b_prime = self.gen_b.encode(x_b)
+
+        # c_a, s_a_prime = self.gen_a.encode(x_a)
+        # c_b, _ = self.gen_b.encode(x_b)
+
         # decode (cross domain)
         x_ba = self.gen_a.decode(c_b, s_a)
         x_ab = self.gen_b.decode(c_a, s_b)
+
+        x_real_ba = self.gen_a.decode(c_b, s_a_prime)
+        x_real_ab = self.gen_b.decode(c_a, s_b_prime)
+
+        self.loss_dis_real_a = self.dis_a.calc_dis_loss(x_real_ba.detach(), x_a)
+        self.loss_dis_real_b = self.dis_b.calc_dis_loss(x_real_ab.detach(), x_b)
         # D loss
+
         self.loss_dis_a = self.dis_a.calc_dis_loss(x_ba.detach(), x_a)
         self.loss_dis_b = self.dis_b.calc_dis_loss(x_ab.detach(), x_b)
-        self.loss_dis_total = hyperparameters['gan_w'] * self.loss_dis_a + hyperparameters['gan_w'] * self.loss_dis_b
+
+        self.loss_dis_total = hyperparameters['gan_w'] * self.loss_dis_a + hyperparameters['gan_w'] * self.loss_dis_b + \
+                              hyperparameters['gan_w'] * self.loss_dis_real_a + hyperparameters['gan_w'] * self.loss_dis_real_b
 
         self.loss_dis_total.backward()
         self.dis_opt.step()
