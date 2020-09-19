@@ -126,13 +126,12 @@ class SANET_Trainer(nn.Module):
         x_real_ba = self.gen_a.decode(c_b, s_a_prime)
         x_real_ab = self.gen_a.decode(c_a, s_b_prime)
 
-        c_real_b_recon, s_real_a_recon = self.gen_a.encode(x_real_ba)
-        c_real_a_recon, s_real_b_recon = self.gen_a.encode(x_real_ab)
+        c_real_b_recon, s_real_a_recon, _ = self.gen_a.encode(x_real_ba)
+        c_real_a_recon, s_real_b_recon, _ = self.gen_a.encode(x_real_ab)
 
         # reconstruction loss
         self.loss_gen_recon_x_a = self.recon_criterion(x_a_recon, x_a)
         self.loss_gen_recon_x_b = self.recon_criterion(x_b_recon, x_b)
-
 
         self.loss_gen_recon_real_s_a = self.recon_criterion(s_real_a_recon, s_a_prime)
         self.loss_gen_recon_real_s_b = self.recon_criterion(s_real_b_recon, s_b_prime)
@@ -336,13 +335,27 @@ class SANET_Trainer(nn.Module):
         # encode
         c_a, _, a_feats = self.gen_a.encode(x_a)
         c_b, _, b_feats = self.gen_b.encode(x_b)
+
+        c_a, s_a_prime, _ = self.gen_a.encode(x_a)
+        c_b, s_b_prime, _ = self.gen_b.encode(x_b)
+
         # decode (cross domain)
         x_ba = self.gen_a.decode(c_b, s_a, a_feats)
         x_ab = self.gen_b.decode(c_a, s_b, b_feats)
+
+        x_real_ba = self.gen_a.decode(c_b, s_a_prime)
+        x_real_ab = self.gen_b.decode(c_a, s_b_prime)
+
         # D loss
         self.loss_dis_a = self.dis_a.calc_dis_loss(x_ba.detach(), x_a)
         self.loss_dis_b = self.dis_b.calc_dis_loss(x_ab.detach(), x_b)
-        self.loss_dis_total = hyperparameters['gan_w'] * self.loss_dis_a + hyperparameters['gan_w'] * self.loss_dis_b
+
+        self.loss_dis_real_a = self.dis_a.calc_dis_loss(x_real_ba.detach(), x_a)
+        self.loss_dis_real_b = self.dis_b.calc_dis_loss(x_real_ab.detach(), x_b)
+
+        self.loss_dis_total = hyperparameters['gan_w'] * self.loss_dis_a + hyperparameters['gan_w'] * self.loss_dis_b + \
+                              hyperparameters['gan_w'] * self.loss_dis_real_a + hyperparameters[
+                                  'gan_w'] * self.loss_dis_real_b
 
         # loss_dict = {
         #     'dis_a': self.loss_dis_a.item(),
