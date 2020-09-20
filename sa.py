@@ -127,7 +127,7 @@ class SANET_Trainer(nn.Module):
         x_real_ab = self.gen_a.decode(c_a, s_b_prime)
 
         c_real_b_recon, s_real_a_recon, _ = self.gen_a.encode(x_real_ba)
-        c_real_a_recon, s_real_b_recon, _ = self.gen_a.encode(x_real_ab)
+        c_real_a_recon, s_real_b_recon, _ = self.gen_b.encode(x_real_ab)
 
         # reconstruction loss
         self.loss_gen_recon_x_a = self.recon_criterion(x_a_recon, x_a)
@@ -143,8 +143,8 @@ class SANET_Trainer(nn.Module):
         # self.loss_gen_recon_c_a = self.recon_criterion(c_a_recon, c_a)
         # self.loss_gen_recon_c_b = self.recon_criterion(c_b_recon, c_b)
 
-        self.loss_gen_cycrecon_x_a = self.recon_criterion(x_aba, x_a) if hyperparameters['recon_x_cyc_w'] > 0 else 0
-        self.loss_gen_cycrecon_x_b = self.recon_criterion(x_bab, x_b) if hyperparameters['recon_x_cyc_w'] > 0 else 0
+        # self.loss_gen_cycrecon_x_a = self.recon_criterion(x_aba, x_a) if hyperparameters['recon_x_cyc_w'] > 0 else 0
+        # self.loss_gen_cycrecon_x_b = self.recon_criterion(x_bab, x_b) if hyperparameters['recon_x_cyc_w'] > 0 else 0
         # GAN loss
         # self.loss_gen_adv_a = self.dis_a.calc_gen_loss(x_ba)
         # self.loss_gen_adv_b = self.dis_b.calc_gen_loss(x_ab)
