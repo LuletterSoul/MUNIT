@@ -117,9 +117,8 @@ class SANET_Trainer(nn.Module):
         x_ba = self.gen_a.decode(c_b, s_a, a_srn_feats)
         x_ab = self.gen_b.decode(c_a, s_b, b_srn_feats)
 
-
         x_real_ba = self.gen_a.decode(c_b, s_a_prime)
-        x_real_ab = self.gen_a.decode(c_a, s_b_prime)
+        x_real_ab = self.gen_b.decode(c_a, s_b_prime)
 
         # encode again
         c_b_recon, s_a_recon, ba_feats = self.gen_a.encode(x_ba)
@@ -131,8 +130,6 @@ class SANET_Trainer(nn.Module):
         # decode again (if needed)
         x_aba = self.gen_a.decode(c_a_recon, s_a_prime, a_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
         x_bab = self.gen_b.decode(c_b_recon, s_b_prime, b_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
-
-
 
         # reconstruction loss
         self.loss_gen_recon_x_a = self.recon_criterion(x_a_recon, x_a)
