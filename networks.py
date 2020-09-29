@@ -289,7 +289,7 @@ class SAGen(nn.Module):
         assert content is not None and style_fake is not None
         return content, style_fake, None
 
-    def decode(self, content, style, feats=None):
+    def decode(self, content, style, feats=None, enable_mapping=False):
         if self.style_encoder_type == 'multi-level':  # use multi-level autoencoders
             images = self.dec(content, feats)
         else:
@@ -303,7 +303,7 @@ class SAGen(nn.Module):
                 #     print(f'mlp output dim is {output_dim}')
                 style = self.mlp(style).view_as(content)
             elif self.style_encoder_type == 'mirror':
-                if self.use_mapping:
+                if self.use_mapping and enable_mapping:
                     style = self.mapping_nets(style).view_as(content)
             content = self.sanet(content, style)
             images = self.dec(content)
