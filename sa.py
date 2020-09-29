@@ -113,10 +113,11 @@ class SANET_Trainer(nn.Module):
         # decode (within domain)
         x_a_recon = self.gen_a.decode(c_a, s_a_prime, a_feats)
         x_b_recon = self.gen_b.decode(c_b, s_b_prime, b_feats)
-        # decode (cross domain)
+        # decode (cross domain) using style code from normal distribution
         x_ba = self.gen_a.decode(c_b, s_a, a_srn_feats)
         x_ab = self.gen_b.decode(c_a, s_b, b_srn_feats)
 
+        # decode (cross domain) using style code from style encoder
         x_real_ba = self.gen_a.decode(c_b, s_a_prime)
         x_real_ab = self.gen_b.decode(c_a, s_b_prime)
 
@@ -131,15 +132,24 @@ class SANET_Trainer(nn.Module):
         x_aba = self.gen_a.decode(c_a_recon, s_a_prime, a_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
         x_bab = self.gen_b.decode(c_b_recon, s_b_prime, b_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
 
-        # reconstruction loss
+        # image reconstruction loss
         self.loss_gen_recon_x_a = self.recon_criterion(x_a_recon, x_a)
         self.loss_gen_recon_x_b = self.recon_criterion(x_b_recon, x_b)
 
+        # diversity sensitive loss
+        s_a2, s_b2, a_srn_feats2, b_srn_feats2 = self.sample_style_code(x_a, x_b, c_a, c_b, a_feats, b_feats)
+        x_ba2 = self.gen_a.decode(c_b, s_a2, a_srn_feats2)
+        x_ab2 = self.gen_b.decode(c_a, s_b2, b_srn_feats2)
+        self.loss_diversity_loss_ba = torch.mean(torch.abs(x_ba2 - x_ba))
+        self.loss_diversity_loss_ab = torch.mean(torch.abs(x_ab2 - x_ab))
+
+        # latent reconstruction loss(style encoder branch)
         self.loss_gen_recon_real_s_a = self.recon_criterion(s_real_a_recon, s_a_prime)
         self.loss_gen_recon_real_s_b = self.recon_criterion(s_real_b_recon, s_b_prime)
         self.loss_gen_recon_real_c_a = self.recon_criterion(c_real_a_recon, c_a)
         self.loss_gen_recon_real_c_b = self.recon_criterion(c_real_b_recon, c_b)
 
+        # latent reconstruction loss(random sample branch)
         self.loss_gen_recon_s_a = self.recon_criterion(s_a_recon, s_a)
         self.loss_gen_recon_s_b = self.recon_criterion(s_b_recon, s_b)
         self.loss_gen_recon_c_a = self.recon_criterion(c_a_recon, c_a)
@@ -147,6 +157,7 @@ class SANET_Trainer(nn.Module):
 
         self.loss_gen_cycrecon_x_a = self.recon_criterion(x_aba, x_a) if hyperparameters['recon_x_cyc_w'] > 0 else 0
         self.loss_gen_cycrecon_x_b = self.recon_criterion(x_bab, x_b) if hyperparameters['recon_x_cyc_w'] > 0 else 0
+
         # GAN loss
         self.loss_gen_adv_a = self.dis_a.calc_gen_loss(x_ba)
         self.loss_gen_adv_b = self.dis_b.calc_gen_loss(x_ab)
@@ -173,7 +184,9 @@ class SANET_Trainer(nn.Module):
                               hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_a + \
                               hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_b + \
                               hyperparameters['vgg_w'] * self.loss_gen_vgg_a + \
-                              hyperparameters['vgg_w'] * self.loss_gen_vgg_b
+                              hyperparameters['vgg_w'] * self.loss_gen_vgg_b + \
+                              hyperparameters['ds_w'] * self.loss_diversity_loss_ab + \
+                              hyperparameters['ds_w'] * self.loss_diversity_loss_ba
 
         # loss_dict = {'gen_adv_a': hyperparameters['gan_w'] * self.loss_gen_adv_a.item(),
         #              'gan_adv_b': hyperparameters['gan_w'] * self.loss_gen_adv_b.item(),
