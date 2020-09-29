@@ -231,9 +231,9 @@ class SANET_Trainer(nn.Module):
         x_a_recon, x_b_recon, x_ba1, x_ba2, x_ab1, x_ab2 = [], [], [], [], [], []
         if self.style_encoder_type == 'mapping' or self.style_encoder_type == 'mirror':
             # init style code of A domain and style code of B domain
-            if self.s_a is None or self.s_b is None:
-                self.s_a = torch.randn(self.display_size, self.style_dim, 1, 1).cuda()
-                self.s_b = torch.randn(self.display_size, self.style_dim, 1, 1).cuda()
+            # if self.s_a is None or self.s_b is None:
+            self.s_a = torch.randn(self.display_size, self.style_dim, 1, 1).cuda()
+            self.s_b = torch.randn(self.display_size, self.style_dim, 1, 1).cuda()
             s_a1 = Variable(self.s_a)
             s_b1 = Variable(self.s_b)
             # s_a2 = Variable(torch.randn(x_a.size(0), self.style_dim, 1, 1).cuda())

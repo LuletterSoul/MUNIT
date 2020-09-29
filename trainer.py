@@ -170,7 +170,7 @@ class MUNIT_Trainer(nn.Module):
         s_b = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
         # s_a = Variable(torch.randn(x_a.size(0), self.content_output_dim, 64, 64).cuda())
         # s_b = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
-        # encode
+        # encod
         c_a, _ = self.gen_a.encode(x_a)
         c_b, _ = self.gen_b.encode(x_b)
         # decode (cross domain)
