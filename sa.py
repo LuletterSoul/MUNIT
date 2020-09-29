@@ -124,7 +124,7 @@ class SANET_Trainer(nn.Module):
         # x_bab = self.gen_b.decode(c_b_recon, s_b_prime, b_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
 
         x_real_ba = self.gen_a.decode(c_b, s_a_prime)
-        x_real_ab = self.gen_a.decode(c_a, s_b_prime)
+        x_real_ab = self.gen_b.decode(c_a, s_b_prime)
 
         c_real_b_recon, s_real_a_recon, _ = self.gen_a.encode(x_real_ba)
         c_real_a_recon, s_real_b_recon, _ = self.gen_b.encode(x_real_ab)
