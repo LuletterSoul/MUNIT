@@ -140,8 +140,8 @@ class SANET_Trainer(nn.Module):
         s_a2, s_b2, a_srn_feats2, b_srn_feats2 = self.sample_style_code(x_a, x_b, c_a, c_b, a_feats, b_feats)
         x_ba2 = self.gen_a.decode(c_b, s_a2, a_srn_feats2)
         x_ab2 = self.gen_b.decode(c_a, s_b2, b_srn_feats2)
-        self.loss_diversity_loss_ba = torch.mean(torch.abs(x_ba2 - x_ba))
-        self.loss_diversity_loss_ab = torch.mean(torch.abs(x_ab2 - x_ab))
+        self.loss_diversity_loss_ba = - torch.mean(torch.abs(x_ba2 - x_ba))
+        self.loss_diversity_loss_ab = - torch.mean(torch.abs(x_ab2 - x_ab))
 
         # latent reconstruction loss(style encoder branch)
         self.loss_gen_recon_real_s_a = self.recon_criterion(s_real_a_recon, s_a_prime)
