@@ -39,6 +39,7 @@ class SANET_Trainer(nn.Module):
                                 hyperparameters['dis'])  # discriminator for domain a
         self.dis_b = MsImageDis(hyperparameters['input_dim_b'],
                                 hyperparameters['dis'])  # discriminator for domain b
+        self.cos_sim = nn.CosineSimilarity()
         self.instancenorm = nn.InstanceNorm2d(512, affine=False)
         self.content_output_dim = self.gen_a.enc_content.output_dim
         self.style_dim = hyperparameters['gen']['style_dim']
@@ -85,6 +86,14 @@ class SANET_Trainer(nn.Module):
             self.vgg.eval()
             for param in self.vgg.parameters():
                 param.requires_grad = False
+
+    def cal_cos_distance(self, x1, x2):
+        return 1 - self.cos_sim(x1, x2)
+
+    def anti_collapse_criterion(self, s1, s2, x1, x2, eps=1e-12):
+        return self.cal_cos_distance(s1.reshape(s1.size(0), -1), s2.reshape(s2.size(0), -1)) / (self.cal_cos_distance(
+            x1.reshape(x1.size(0), -1),
+            x2.reshape(x2.size(0), -1)) + eps)
 
     def recon_criterion(self, input, target):
         return torch.mean(torch.abs(input - target))
@@ -137,11 +146,20 @@ class SANET_Trainer(nn.Module):
         self.loss_gen_recon_x_b = self.recon_criterion(x_b_recon, x_b)
 
         # diversity sensitive loss
+        # s_a2, s_b2, a_srn_feats2, b_srn_feats2 = self.sample_style_code(x_a, x_b, c_a, c_b, a_feats, b_feats)
+        # x_ba2 = self.gen_a.decode(c_b, s_a2, a_srn_feats2)
+        # x_ab2 = self.gen_b.decode(c_a, s_b2, b_srn_feats2)
+        # self.loss_diversity_loss_ba = - torch.mean(torch.abs(x_ba2 - x_ba))
+        # self.loss_diversity_loss_ab = - torch.mean(torch.abs(x_ab2 - x_ab))
+
+        # anti collapse loss
         s_a2, s_b2, a_srn_feats2, b_srn_feats2 = self.sample_style_code(x_a, x_b, c_a, c_b, a_feats, b_feats)
         x_ba2 = self.gen_a.decode(c_b, s_a2, a_srn_feats2)
         x_ab2 = self.gen_b.decode(c_a, s_b2, b_srn_feats2)
-        self.loss_diversity_loss_ba = - torch.mean(torch.abs(x_ba2 - x_ba))
-        self.loss_diversity_loss_ab = - torch.mean(torch.abs(x_ab2 - x_ab))
+        # self.loss_diversity_loss_ba = - torch.mean(torch.abs(x_ba2 - x_ba))
+        # self.loss_diversity_loss_ab = - torch.mean(torch.abs(x_ab2 - x_ab))
+        self.loss_anti_collapse_ba = self.anti_collapse_criterion(s_a, s_a2, x_ba, x_ba2).mean()
+        self.loss_anti_collapse_ab = self.anti_collapse_criterion(s_b, s_b2, x_ab, x_ab2).mean()
 
         # latent reconstruction loss(style encoder branch)
         self.loss_gen_recon_real_s_a = self.recon_criterion(s_real_a_recon, s_a_prime)
@@ -185,8 +203,8 @@ class SANET_Trainer(nn.Module):
                               hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_b + \
                               hyperparameters['vgg_w'] * self.loss_gen_vgg_a + \
                               hyperparameters['vgg_w'] * self.loss_gen_vgg_b + \
-                              hyperparameters['ds_w'] * self.loss_diversity_loss_ab + \
-                              hyperparameters['ds_w'] * self.loss_diversity_loss_ba
+                              hyperparameters['ds_w'] * self.loss_anti_collapse_ab + \
+                              hyperparameters['ds_w'] * self.loss_anti_collapse_ba
 
         # loss_dict = {'gen_adv_a': hyperparameters['gan_w'] * self.loss_gen_adv_a.item(),
         #              'gan_adv_b': hyperparameters['gan_w'] * self.loss_gen_adv_b.item(),
