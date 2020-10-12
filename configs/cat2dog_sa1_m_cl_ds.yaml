@@ -24,7 +24,7 @@ recon_x_w: 10                 # weight of image reconstruction loss
 recon_s_w: 1                  # weight of style reconstruction loss
 recon_c_w: 1                  # weight of content reconstruction loss
 recon_x_cyc_w: 0              # weight of explicit style augmented cycle consistency loss
-ds_w : 1
+ds_w : 0.5
 vgg_w: 0                      # weight of domain-invariant perceptual loss
 
 # model options
@@ -43,6 +43,8 @@ gen:
   level: 1
   mapping_layers: 3
   use_mapping: false
+  use_gram_loss : true
+  style_loss_type: gram
 dis:
   update_internal: 2
   dim: 64                     # number of filters in the bottommost layer

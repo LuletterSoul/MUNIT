@@ -20,6 +20,45 @@ from networks import SAGen, AdaINGen, MsImageDis
 from utils import get_scheduler, weights_init, load_vgg16, vgg_preprocess, get_model_list
 
 
+class GramMatrix(nn.Module):
+    def forward(self, input):
+        b, c, h, w = input.size()
+        F = input.view(b, c, h * w)
+        G = torch.bmm(F, F.transpose(1, 2))
+        G.div_(h * w)
+        return G
+
+
+class GramMSELoss(nn.Module):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, input, target):
+        out = nn.MSELoss()(GramMatrix()(input), GramMatrix(target))
+        return out
+
+
+def calc_mean_std(feat, eps=1e-5):
+    # eps is a small value added to the variance to avoid divide-by-zero.
+    size = feat.size()
+    assert (len(size) == 4)
+    N, C = size[:2]
+    feat_var = feat.view(N, C, -1).var(dim=2) + eps
+    feat_std = feat_var.sqrt().view(N, C, 1, 1)
+    feat_mean = feat.view(N, C, -1).mean(dim=2).view(N, C, 1, 1)
+    return feat_mean, feat_std
+
+
+def calc_style_loss(input, target):
+    assert (input.size() == target.size())
+    assert (target.requires_grad is False)
+    input_mean, input_std = calc_mean_std(input)
+    target_mean, target_std = calc_mean_std(target)
+    return nn.MSELoss(input_mean, target_mean) + \
+           nn.MSELoss(input_std, target_std)
+
+
 class SANET_Trainer(nn.Module):
     def __init__(self, hyperparameters):
         super(SANET_Trainer, self).__init__()
@@ -44,9 +83,11 @@ class SANET_Trainer(nn.Module):
         self.content_output_dim = self.gen_a.enc_content.output_dim
         self.style_dim = hyperparameters['gen']['style_dim']
         self.style_encoder_type = hyperparameters['gen']['style_encoder_type']
+        self.style_loss_type = hyperparameters['gen']['style_loss_type']
         self.display_size = hyperparameters['display_size']
         # fix the noise used in sampling
         display_size = int(hyperparameters['display_size'])
+        self.gram_mse_loss = GramMSELoss()
         if self.style_encoder_type == 'mirror':
             self.s_a = torch.randn(display_size, self.content_output_dim, 64, 64).cuda()
             self.s_b = torch.randn(display_size, self.content_output_dim, 64, 64).cuda()
@@ -98,6 +139,14 @@ class SANET_Trainer(nn.Module):
     def recon_criterion(self, input, target):
         return torch.mean(torch.abs(input - target))
 
+    def style_recon_criterion(self, input, target):
+        if self.style_loss_type == 'gram':
+            return self.gram_mse_loss(input, target)
+        elif self.style_encoder_type == 'mu':
+            return calc_style_loss(input, target)
+        else:
+            return self.recon_criterion(input, target)
+
     def forward(self, x_a, x_b):
         self.eval()
         s_a = Variable(self.s_a)
@@ -113,6 +162,7 @@ class SANET_Trainer(nn.Module):
         self.gen_opt.zero_grad()
         # s_a = Variable(torch.randn(x_a.size(0), self.content_output_dim, 64, 64).cuda())
         # s_b = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
+
         # encode
         c_a, s_a_prime, a_feats = self.gen_a.encode(x_a)
         c_b, s_b_prime, b_feats = self.gen_b.encode(x_b)
@@ -122,6 +172,7 @@ class SANET_Trainer(nn.Module):
         # decode (within domain)
         x_a_recon = self.gen_a.decode(c_a, s_a_prime, a_feats)
         x_b_recon = self.gen_b.decode(c_b, s_b_prime, b_feats)
+
         # decode (cross domain) using style code from normal distribution
         x_ba = self.gen_a.decode(c_b, s_a, a_srn_feats)
         x_ab = self.gen_b.decode(c_a, s_b, b_srn_feats)
@@ -162,14 +213,14 @@ class SANET_Trainer(nn.Module):
         self.loss_anti_collapse_ab = self.anti_collapse_criterion(s_b, s_b2, x_ab, x_ab2).mean()
 
         # latent reconstruction loss(style encoder branch)
-        self.loss_gen_recon_real_s_a = self.recon_criterion(s_real_a_recon, s_a_prime)
-        self.loss_gen_recon_real_s_b = self.recon_criterion(s_real_b_recon, s_b_prime)
+        self.loss_gen_recon_real_s_a = self.style_recon_criterion(s_real_a_recon, s_a_prime)
+        self.loss_gen_recon_real_s_b = self.style_recon_criterion(s_real_b_recon, s_b_prime)
         self.loss_gen_recon_real_c_a = self.recon_criterion(c_real_a_recon, c_a)
         self.loss_gen_recon_real_c_b = self.recon_criterion(c_real_b_recon, c_b)
 
         # latent reconstruction loss(random sample branch)
-        self.loss_gen_recon_s_a = self.recon_criterion(s_a_recon, s_a)
-        self.loss_gen_recon_s_b = self.recon_criterion(s_b_recon, s_b)
+        self.loss_gen_recon_s_a = self.style_recon_criterion(s_a_recon, s_a)
+        self.loss_gen_recon_s_b = self.style_recon_criterion(s_b_recon, s_b)
         self.loss_gen_recon_c_a = self.recon_criterion(c_a_recon, c_a)
         self.loss_gen_recon_c_b = self.recon_criterion(c_b_recon, c_b)
 
