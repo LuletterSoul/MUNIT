@@ -35,7 +35,7 @@ class GramMSELoss(nn.Module):
         super().__init__()
 
     def forward(self, input, target):
-        out = nn.MSELoss()(GramMatrix()(input), GramMatrix(target))
+        out = nn.MSELoss()(GramMatrix()(input), GramMatrix()(target))
         return out
 
 
@@ -83,7 +83,7 @@ class SANET_Trainer(nn.Module):
         self.content_output_dim = self.gen_a.enc_content.output_dim
         self.style_dim = hyperparameters['gen']['style_dim']
         self.style_encoder_type = hyperparameters['gen']['style_encoder_type']
-        self.style_loss_type = hyperparameters['gen']['style_loss_type']
+        self.style_criterion = hyperparameters['gen']['style_criterion']
         self.display_size = hyperparameters['display_size']
         # fix the noise used in sampling
         display_size = int(hyperparameters['display_size'])
@@ -140,7 +140,7 @@ class SANET_Trainer(nn.Module):
         return torch.mean(torch.abs(input - target))
 
     def style_recon_criterion(self, input, target):
-        if self.style_loss_type == 'gram':
+        if self.style_criterion == 'gram':
             return self.gram_mse_loss(input, target)
         elif self.style_encoder_type == 'mu':
             return calc_style_loss(input, target)
