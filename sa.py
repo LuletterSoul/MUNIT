@@ -56,7 +56,7 @@ def calc_style_loss(input, target):
     input_mean, input_std = calc_mean_std(input)
     target_mean, target_std = calc_mean_std(target)
     return nn.MSELoss(input_mean, target_mean) + \
-           nn.MSELoss(input_std, target_std)
+        nn.MSELoss(input_std, target_std)
 
 
 class SANET_Trainer(nn.Module):
@@ -67,8 +67,12 @@ class SANET_Trainer(nn.Module):
         self.gen_a = None
         self.gen_b = None
         if hyperparameters['gen_type'] == 'sanet':
-            self.gen_a = SAGen(hyperparameters['input_dim_a'], hyperparameters['gen'])  # auto-encoder for domain a
-            self.gen_b = SAGen(hyperparameters['input_dim_b'], hyperparameters['gen'])  # auto-encoder for domain b
+            # auto-encoder for domain a
+            self.gen_a = SAGen(
+                hyperparameters['input_dim_a'], hyperparameters['gen'])
+            # auto-encoder for domain b
+            self.gen_b = SAGen(
+                hyperparameters['input_dim_b'], hyperparameters['gen'])
         else:
             self.gen_a = AdaINGen(hyperparameters['input_dim_a'],
                                   hyperparameters['gen'])  # auto-encoder for domain a
@@ -89,8 +93,10 @@ class SANET_Trainer(nn.Module):
         display_size = int(hyperparameters['display_size'])
         self.gram_mse_loss = GramMSELoss()
         if self.style_encoder_type == 'mirror':
-            self.s_a = torch.randn(display_size, self.content_output_dim, 64, 64).cuda()
-            self.s_b = torch.randn(display_size, self.content_output_dim, 64, 64).cuda()
+            self.s_a = torch.randn(
+                display_size, self.content_output_dim, 64, 64).cuda()
+            self.s_b = torch.randn(
+                display_size, self.content_output_dim, 64, 64).cuda()
         elif self.style_encoder_type == 'mapping':
             # generate from mapping network after proper training
             self.s_a = None
@@ -107,8 +113,10 @@ class SANET_Trainer(nn.Module):
         # Setup the optimizers
         beta1 = hyperparameters['beta1']
         beta2 = hyperparameters['beta2']
-        dis_params = list(self.dis_a.parameters()) + list(self.dis_b.parameters())
-        gen_params = list(self.gen_a.parameters()) + list(self.gen_b.parameters())
+        dis_params = list(self.dis_a.parameters()) + \
+            list(self.dis_b.parameters())
+        gen_params = list(self.gen_a.parameters()) + \
+            list(self.gen_b.parameters())
         self.dis_opt = torch.optim.Adam([p for p in dis_params if p.requires_grad],
                                         lr=lr, betas=(beta1, beta2), weight_decay=hyperparameters['weight_decay'])
         self.gen_opt = torch.optim.Adam([p for p in gen_params if p.requires_grad],
@@ -123,7 +131,8 @@ class SANET_Trainer(nn.Module):
 
         # Load VGG model if needed
         if 'vgg_w' in hyperparameters.keys() and hyperparameters['vgg_w'] > 0:
-            self.vgg = load_vgg16(hyperparameters['vgg_model_path'] + '/models')
+            self.vgg = load_vgg16(
+                hyperparameters['vgg_model_path'] + '/models')
             self.vgg.eval()
             for param in self.vgg.parameters():
                 param.requires_grad = False
@@ -167,7 +176,8 @@ class SANET_Trainer(nn.Module):
         c_a, s_a_prime, a_feats = self.gen_a.encode(x_a)
         c_b, s_b_prime, b_feats = self.gen_b.encode(x_b)
 
-        s_a, s_b, a_srn_feats, b_srn_feats = self.sample_style_code(x_a, x_b, c_a, c_b, a_feats, b_feats)
+        s_a, s_b, a_srn_feats, b_srn_feats = self.sample_style_code(
+            x_a, x_b, c_a, c_b, a_feats, b_feats)
 
         # decode (within domain)
         x_a_recon = self.gen_a.decode(c_a, s_a_prime, a_feats)
@@ -189,8 +199,10 @@ class SANET_Trainer(nn.Module):
         c_real_a_recon, s_real_b_recon, _ = self.gen_b.encode(x_real_ab)
 
         # decode again (if needed)
-        x_aba = self.gen_a.decode(c_a_recon, s_a_prime, a_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
-        x_bab = self.gen_b.decode(c_b_recon, s_b_prime, b_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
+        x_aba = self.gen_a.decode(
+            c_a_recon, s_a_prime, a_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
+        x_bab = self.gen_b.decode(
+            c_b_recon, s_b_prime, b_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
 
         # image reconstruction loss
         self.loss_gen_recon_x_a = self.recon_criterion(x_a_recon, x_a)
@@ -204,19 +216,26 @@ class SANET_Trainer(nn.Module):
         # self.loss_diversity_loss_ab = - torch.mean(torch.abs(x_ab2 - x_ab))
 
         # anti collapse loss
-        s_a2, s_b2, a_srn_feats2, b_srn_feats2 = self.sample_style_code(x_a, x_b, c_a, c_b, a_feats, b_feats)
+        s_a2, s_b2, a_srn_feats2, b_srn_feats2 = self.sample_style_code(
+            x_a, x_b, c_a, c_b, a_feats, b_feats)
         x_ba2 = self.gen_a.decode(c_b, s_a2, a_srn_feats2)
         x_ab2 = self.gen_b.decode(c_a, s_b2, b_srn_feats2)
         # self.loss_diversity_loss_ba = - torch.mean(torch.abs(x_ba2 - x_ba))
         # self.loss_diversity_loss_ab = - torch.mean(torch.abs(x_ab2 - x_ab))
-        self.loss_anti_collapse_ba = self.anti_collapse_criterion(s_a, s_a2, x_ba, x_ba2).mean()
-        self.loss_anti_collapse_ab = self.anti_collapse_criterion(s_b, s_b2, x_ab, x_ab2).mean()
+        self.loss_anti_collapse_ba = self.anti_collapse_criterion(
+            s_a, s_a2, x_ba, x_ba2).mean()
+        self.loss_anti_collapse_ab = self.anti_collapse_criterion(
+            s_b, s_b2, x_ab, x_ab2).mean()
 
         # latent reconstruction loss(style encoder branch)
-        self.loss_gen_recon_real_s_a = self.style_recon_criterion(s_real_a_recon, s_a_prime)
-        self.loss_gen_recon_real_s_b = self.style_recon_criterion(s_real_b_recon, s_b_prime)
-        self.loss_gen_recon_real_c_a = self.recon_criterion(c_real_a_recon, c_a)
-        self.loss_gen_recon_real_c_b = self.recon_criterion(c_real_b_recon, c_b)
+        self.loss_gen_recon_real_s_a = self.style_recon_criterion(
+            s_real_a_recon, s_a_prime)
+        self.loss_gen_recon_real_s_b = self.style_recon_criterion(
+            s_real_b_recon, s_b_prime)
+        self.loss_gen_recon_real_c_a = self.recon_criterion(
+            c_real_a_recon, c_a)
+        self.loss_gen_recon_real_c_b = self.recon_criterion(
+            c_real_b_recon, c_b)
 
         # latent reconstruction loss(random sample branch)
         self.loss_gen_recon_s_a = self.style_recon_criterion(s_a_recon, s_a)
@@ -224,8 +243,10 @@ class SANET_Trainer(nn.Module):
         self.loss_gen_recon_c_a = self.recon_criterion(c_a_recon, c_a)
         self.loss_gen_recon_c_b = self.recon_criterion(c_b_recon, c_b)
 
-        self.loss_gen_cycrecon_x_a = self.recon_criterion(x_aba, x_a) if hyperparameters['recon_x_cyc_w'] > 0 else 0
-        self.loss_gen_cycrecon_x_b = self.recon_criterion(x_bab, x_b) if hyperparameters['recon_x_cyc_w'] > 0 else 0
+        self.loss_gen_cycrecon_x_a = self.recon_criterion(
+            x_aba, x_a) if hyperparameters['recon_x_cyc_w'] > 0 else 0
+        self.loss_gen_cycrecon_x_b = self.recon_criterion(
+            x_bab, x_b) if hyperparameters['recon_x_cyc_w'] > 0 else 0
 
         # GAN loss
         self.loss_gen_adv_a = self.dis_a.calc_gen_loss(x_ba)
@@ -233,29 +254,31 @@ class SANET_Trainer(nn.Module):
         self.loss_gen_adv_real_a = self.dis_a.calc_gen_loss(x_real_ba)
         self.loss_gen_adv_real_b = self.dis_b.calc_gen_loss(x_real_ab)
         # domain-invariant perceptual loss
-        self.loss_gen_vgg_a = self.compute_vgg_loss(self.vgg, x_ba, x_b) if hyperparameters['vgg_w'] > 0 else 0
-        self.loss_gen_vgg_b = self.compute_vgg_loss(self.vgg, x_ab, x_a) if hyperparameters['vgg_w'] > 0 else 0
+        self.loss_gen_vgg_a = self.compute_vgg_loss(
+            self.vgg, x_ba, x_b) if hyperparameters['vgg_w'] > 0 else 0
+        self.loss_gen_vgg_b = self.compute_vgg_loss(
+            self.vgg, x_ab, x_a) if hyperparameters['vgg_w'] > 0 else 0
         # total loss
         self.loss_gen_total = hyperparameters['gan_w'] * self.loss_gen_adv_a + \
-                              hyperparameters['gan_w'] * self.loss_gen_adv_b + \
-                              hyperparameters['gan_w'] * self.loss_gen_adv_real_a + \
-                              hyperparameters['gan_w'] * self.loss_gen_adv_real_b + \
-                              hyperparameters['recon_x_w'] * self.loss_gen_recon_x_a + \
-                              hyperparameters['recon_s_w'] * self.loss_gen_recon_s_a + \
-                              hyperparameters['recon_s_w'] * self.loss_gen_recon_real_s_a + \
-                              hyperparameters['recon_c_w'] * self.loss_gen_recon_c_a + \
-                              hyperparameters['recon_c_w'] * self.loss_gen_recon_real_c_a + \
-                              hyperparameters['recon_x_w'] * self.loss_gen_recon_x_b + \
-                              hyperparameters['recon_s_w'] * self.loss_gen_recon_s_b + \
-                              hyperparameters['recon_s_w'] * self.loss_gen_recon_real_s_b + \
-                              hyperparameters['recon_c_w'] * self.loss_gen_recon_c_b + \
-                              hyperparameters['recon_c_w'] * self.loss_gen_recon_real_c_b + \
-                              hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_a + \
-                              hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_b + \
-                              hyperparameters['vgg_w'] * self.loss_gen_vgg_a + \
-                              hyperparameters['vgg_w'] * self.loss_gen_vgg_b + \
-                              hyperparameters['ds_w'] * self.loss_anti_collapse_ab + \
-                              hyperparameters['ds_w'] * self.loss_anti_collapse_ba
+            hyperparameters['gan_w'] * self.loss_gen_adv_b + \
+            hyperparameters['gan_w'] * self.loss_gen_adv_real_a + \
+            hyperparameters['gan_w'] * self.loss_gen_adv_real_b + \
+            hyperparameters['recon_x_w'] * self.loss_gen_recon_x_a + \
+            hyperparameters['recon_s_w'] * self.loss_gen_recon_s_a + \
+            hyperparameters['recon_s_w'] * self.loss_gen_recon_real_s_a + \
+            hyperparameters['recon_c_w'] * self.loss_gen_recon_c_a + \
+            hyperparameters['recon_c_w'] * self.loss_gen_recon_real_c_a + \
+            hyperparameters['recon_x_w'] * self.loss_gen_recon_x_b + \
+            hyperparameters['recon_s_w'] * self.loss_gen_recon_s_b + \
+            hyperparameters['recon_s_w'] * self.loss_gen_recon_real_s_b + \
+            hyperparameters['recon_c_w'] * self.loss_gen_recon_c_b + \
+            hyperparameters['recon_c_w'] * self.loss_gen_recon_real_c_b + \
+            hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_a + \
+            hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_b + \
+            hyperparameters['vgg_w'] * self.loss_gen_vgg_a + \
+            hyperparameters['vgg_w'] * self.loss_gen_vgg_b + \
+            hyperparameters['ds_w'] * self.loss_anti_collapse_ab + \
+            hyperparameters['ds_w'] * self.loss_anti_collapse_ba
 
         # loss_dict = {'gen_adv_a': hyperparameters['gan_w'] * self.loss_gen_adv_a.item(),
         #              'gan_adv_b': hyperparameters['gan_w'] * self.loss_gen_adv_b.item(),
@@ -273,11 +296,15 @@ class SANET_Trainer(nn.Module):
 
     def sample_style_code(self, x_a, x_b, c_a, c_b, a_feats, b_feats):
         if self.style_encoder_type == 'mirror':
-            s_a = Variable(torch.randn(x_a.size(0), self.content_output_dim, 64, 64).cuda())
-            s_b = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
+            s_a = Variable(torch.randn(
+                x_a.size(0), self.content_output_dim, 64, 64).cuda())
+            s_b = Variable(torch.randn(
+                x_b.size(0), self.content_output_dim, 64, 64).cuda())
         elif self.style_encoder_type == 'mapping':
-            s_a = Variable(torch.randn(x_a.size(0), self.style_dim, 1, 1).cuda())
-            s_b = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
+            s_a = Variable(torch.randn(
+                x_a.size(0), self.style_dim, 1, 1).cuda())
+            s_b = Variable(torch.randn(
+                x_b.size(0), self.style_dim, 1, 1).cuda())
             assert self.gen_a.mlp is not None
             assert self.gen_b.mlp is not None
             s_a = self.gen_a.mlp(s_a)
@@ -292,8 +319,10 @@ class SANET_Trainer(nn.Module):
 
     def sample_multi_level_style_code(self, x_a, x_b, a_feats, b_feats, init_s_a_feats=None, init_s_b_feats=None,
                                       use_map=True):
-        s_a = Variable(torch.randn(x_a.size(0), self.content_output_dim, 64, 64).cuda())
-        s_b = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
+        s_a = Variable(torch.randn(
+            x_a.size(0), self.content_output_dim, 64, 64).cuda())
+        s_b = Variable(torch.randn(
+            x_b.size(0), self.content_output_dim, 64, 64).cuda())
         s_a_feats = []
         s_b_feats = []
         a_mapping_nets = self.gen_a.enc_style.mapping_nets
@@ -339,15 +368,18 @@ class SANET_Trainer(nn.Module):
             # if self.s_a is None or self.s_b is None:
             # self.s_a = torch.randn(self.display_size, self.style_dim, 1, 1).cuda()
             # self.s_b = torch.randn(self.display_size, self.style_dim, 1, 1).cuda()
-            self.s_a = torch.randn(self.display_size, self.content_output_dim, 64, 64).cuda()
-            self.s_b = torch.randn(self.display_size, self.content_output_dim, 64, 64).cuda()
+            self.s_a = torch.randn(
+                self.display_size, self.content_output_dim, 64, 64).cuda()
+            self.s_b = torch.randn(
+                self.display_size, self.content_output_dim, 64, 64).cuda()
             s_a1 = Variable(self.s_a)
             s_b1 = Variable(self.s_b)
             # s_a2 = Variable(torch.randn(x_a.size(0), self.style_dim, 1, 1).cuda())
             # s_b2 = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
             # s_a2 = Variable(torch.randn(x_a.size(0), self.content_output_dim, 64, 64).cuda())
             # s_b2 = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
-            s_a2, s_b2, a2_srn_feats, b2_srn_feats = self.sample_style_code(x_a, x_b, c_a, c_b, a_feats, b_feats)
+            s_a2, s_b2, a2_srn_feats, b2_srn_feats = self.sample_style_code(
+                x_a, x_b, c_a, c_b, a_feats, b_feats)
             for i in range(x_a.size(0)):
                 c_a, s_a_fake, _ = self.gen_a.encode(x_a[i].unsqueeze(0))
                 c_b, s_b_fake, _ = self.gen_b.encode(x_b[i].unsqueeze(0))
@@ -369,7 +401,8 @@ class SANET_Trainer(nn.Module):
                                                                                   init_s_a_feats=self.s_a_feats,
                                                                                   init_s_b_feats=self.s_b_feats,
                                                                                   use_map=True)
-            s_a2, s_b2, a2_srn_feats, b2_srn_feats = self.sample_style_code(x_a, x_b, c_a, c_b, a_feats, b_feats)
+            s_a2, s_b2, a2_srn_feats, b2_srn_feats = self.sample_style_code(
+                x_a, x_b, c_a, c_b, a_feats, b_feats)
             s_a1 = Variable(self.s_a)
             s_b1 = Variable(self.s_b)
             a1_srn_feats = torch.stack(a1_srn_feats, dim=1).unsqueeze(2)
@@ -381,10 +414,14 @@ class SANET_Trainer(nn.Module):
                 c_b, s_b_fake, b_feats = self.gen_b.encode(x_b[i].unsqueeze(0))
                 x_a_recon.append(self.gen_a.decode(c_a, s_a_fake, a_feats))
                 x_b_recon.append(self.gen_b.decode(c_b, s_b_fake, b_feats))
-                x_ba1.append(self.gen_a.decode(c_b, s_a1[i].unsqueeze(0), a1_srn_feats[i]))
-                x_ba2.append(self.gen_a.decode(c_b, s_a2[i].unsqueeze(0), a2_srn_feats[i]))
-                x_ab1.append(self.gen_b.decode(c_a, s_b1[i].unsqueeze(0), b1_srn_feats[i]))
-                x_ab2.append(self.gen_b.decode(c_a, s_b2[i].unsqueeze(0), b2_srn_feats[i]))
+                x_ba1.append(self.gen_a.decode(
+                    c_b, s_a1[i].unsqueeze(0), a1_srn_feats[i]))
+                x_ba2.append(self.gen_a.decode(
+                    c_b, s_a2[i].unsqueeze(0), a2_srn_feats[i]))
+                x_ab1.append(self.gen_b.decode(
+                    c_a, s_b1[i].unsqueeze(0), b1_srn_feats[i]))
+                x_ab2.append(self.gen_b.decode(
+                    c_a, s_b2[i].unsqueeze(0), b2_srn_feats[i]))
         x_a_recon, x_b_recon = torch.cat(x_a_recon), torch.cat(x_b_recon)
         x_ba1, x_ba2 = torch.cat(x_ba1), torch.cat(x_ba2)
         x_ab1, x_ab2 = torch.cat(x_ab1), torch.cat(x_ab2)
@@ -418,8 +455,10 @@ class SANET_Trainer(nn.Module):
         self.dis_opt.zero_grad()
         # s_a = Variable(torch.randn(x_a.size(0), self.style_dim, 1, 1).cuda())
         # s_b = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
-        s_a = Variable(torch.randn(x_a.size(0), self.content_output_dim, 64, 64).cuda())
-        s_b = Variable(torch.randn(x_b.size(0), self.content_output_dim, 64, 64).cuda())
+        s_a = Variable(torch.randn(
+            x_a.size(0), self.content_output_dim, 64, 64).cuda())
+        s_b = Variable(torch.randn(
+            x_b.size(0), self.content_output_dim, 64, 64).cuda())
         # encode
         c_a, _, a_feats = self.gen_a.encode(x_a)
         c_b, _, b_feats = self.gen_b.encode(x_b)
@@ -438,12 +477,14 @@ class SANET_Trainer(nn.Module):
         self.loss_dis_a = self.dis_a.calc_dis_loss(x_ba.detach(), x_a)
         self.loss_dis_b = self.dis_b.calc_dis_loss(x_ab.detach(), x_b)
 
-        self.loss_dis_real_a = self.dis_a.calc_dis_loss(x_real_ba.detach(), x_a)
-        self.loss_dis_real_b = self.dis_b.calc_dis_loss(x_real_ab.detach(), x_b)
+        self.loss_dis_real_a = self.dis_a.calc_dis_loss(
+            x_real_ba.detach(), x_a)
+        self.loss_dis_real_b = self.dis_b.calc_dis_loss(
+            x_real_ab.detach(), x_b)
 
         self.loss_dis_total = hyperparameters['gan_w'] * self.loss_dis_a + hyperparameters['gan_w'] * self.loss_dis_b + \
-                              hyperparameters['gan_w'] * self.loss_dis_real_a + hyperparameters[
-                                  'gan_w'] * self.loss_dis_real_b
+            hyperparameters['gan_w'] * self.loss_dis_real_a + hyperparameters[
+            'gan_w'] * self.loss_dis_real_b
 
         # loss_dict = {
         #     'dis_a': self.loss_dis_a.item(),
@@ -477,8 +518,10 @@ class SANET_Trainer(nn.Module):
         self.dis_opt.load_state_dict(state_dict['dis'])
         self.gen_opt.load_state_dict(state_dict['gen'])
         # Reinitilize schedulers
-        self.dis_scheduler = get_scheduler(self.dis_opt, hyperparameters, iterations)
-        self.gen_scheduler = get_scheduler(self.gen_opt, hyperparameters, iterations)
+        self.dis_scheduler = get_scheduler(
+            self.dis_opt, hyperparameters, iterations)
+        self.gen_scheduler = get_scheduler(
+            self.gen_opt, hyperparameters, iterations)
         print('Resume from iteration %d' % iterations)
         return iterations
 
@@ -487,6 +530,9 @@ class SANET_Trainer(nn.Module):
         gen_name = os.path.join(snapshot_dir, 'gen_%08d.pt' % (iterations + 1))
         dis_name = os.path.join(snapshot_dir, 'dis_%08d.pt' % (iterations + 1))
         opt_name = os.path.join(snapshot_dir, 'optimizer.pt')
-        torch.save({'a': self.gen_a.state_dict(), 'b': self.gen_b.state_dict()}, gen_name)
-        torch.save({'a': self.dis_a.state_dict(), 'b': self.dis_b.state_dict()}, dis_name)
-        torch.save({'gen': self.gen_opt.state_dict(), 'dis': self.dis_opt.state_dict()}, opt_name)
+        torch.save({'a': self.gen_a.state_dict(),
+                    'b': self.gen_b.state_dict()}, gen_name)
+        torch.save({'a': self.dis_a.state_dict(),
+                    'b': self.dis_b.state_dict()}, dis_name)
+        torch.save({'gen': self.gen_opt.state_dict(),
+                    'dis': self.dis_opt.state_dict()}, opt_name)
