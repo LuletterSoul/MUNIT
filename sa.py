@@ -297,9 +297,9 @@ class SANET_Trainer(nn.Module):
     def sample_style_code(self, x_a, x_b, c_a, c_b, a_feats, b_feats):
         if self.style_encoder_type == 'mirror':
             s_a = Variable(torch.randn(
-                x_a.size(0), self.content_output_dim, 64, 64).cuda())
+                x_a.size(0), *c_a.size()[1:]).cuda())
             s_b = Variable(torch.randn(
-                x_b.size(0), self.content_output_dim, 64, 64).cuda())
+                x_b.size(0), *c_b.size()[1:]).cuda())
         elif self.style_encoder_type == 'mapping':
             s_a = Variable(torch.randn(
                 x_a.size(0), self.style_dim, 1, 1).cuda())
@@ -453,18 +453,18 @@ class SANET_Trainer(nn.Module):
 
     def dis_update(self, x_a, x_b, hyperparameters):
         self.dis_opt.zero_grad()
-        # s_a = Variable(torch.randn(x_a.size(0), self.style_dim, 1, 1).cuda())
-        # s_b = Variable(torch.randn(x_b.size(0), self.style_dim, 1, 1).cuda())
-        s_a = Variable(torch.randn(
-            x_a.size(0), self.content_output_dim, 64, 64).cuda())
-        s_b = Variable(torch.randn(
-            x_b.size(0), self.content_output_dim, 64, 64).cuda())
+
         # encode
         c_a, _, a_feats = self.gen_a.encode(x_a)
         c_b, _, b_feats = self.gen_b.encode(x_b)
 
         c_a, s_a_prime, _ = self.gen_a.encode(x_a)
         c_b, s_b_prime, _ = self.gen_b.encode(x_b)
+
+        s_a = Variable(torch.randn(
+            x_a.size(0), *c_a.size()[1:]).cuda())
+        s_b = Variable(torch.randn(
+            x_b.size(0), *c_b.size()[1:]).cuda())
 
         # decode (cross domain)
         x_ba = self.gen_a.decode(c_b, s_a, a_feats)

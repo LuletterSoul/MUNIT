@@ -33,7 +33,7 @@ gen:
   mlp_dim: 256                # number of filters in MLP
   style_dim: 8                # length of style code
   activ: relu                 # activation function [relu/lrelu/prelu/selu/tanh]
-  n_downsample: 2             # number of downsampling layers in content encoder
+  n_downsample: 3             # number of downsampling layers in content encoder
   n_res: 4                    # number of residual blocks in content encoder/decoder
   pad_type: reflect           # padding type [zero/reflect]
   style_encoder_type: mirror
@@ -41,7 +41,7 @@ gen:
   n_blk: 2
   mlp_type: mlp
   level: 1
-  mapping_layers: 3
+  mapping_layers: 5
   use_mapping: true
   style_criterion: recon
 dis:
