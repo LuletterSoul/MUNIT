@@ -11,6 +11,7 @@ import argparse
 from torch.autograd import Variable
 from trainer import MUNIT_Trainer, UNIT_Trainer
 from sa import SANET_Trainer
+from msa import *
 import torch.backends.cudnn as cudnn
 import torch
 
@@ -24,10 +25,13 @@ import tensorboardX
 import shutil
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--config', type=str, default='configs/edges2shoes_folder.yaml', help='Path to the config file.')
-parser.add_argument('--output_path', type=str, default='.', help="outputs path")
+parser.add_argument('--config', type=str,
+                    default='configs/edges2shoes_folder.yaml', help='Path to the config file.')
+parser.add_argument('--output_path', type=str,
+                    default='.', help="outputs path")
 parser.add_argument("--resume", action="store_true")
-parser.add_argument('--trainer', type=str, default='MUNIT', help="MUNIT|UNIT|SANET")
+parser.add_argument('--trainer', type=str, default='MUNIT',
+                    help="MUNIT|UNIT|SANET|MSANET")
 opts = parser.parse_args()
 
 cudnn.benchmark = True
@@ -46,27 +50,39 @@ elif opts.trainer == 'UNIT':
     trainer = UNIT_Trainer(config)
 elif opts.trainer == 'SANET':
     trainer = SANET_Trainer(config)
+elif opts.trainer == 'MSANET':
+    trainer = MultiScaleSANET_Trainer(config)
 else:
     sys.exit("Only support MUNIT|UNIT")
 trainer.cuda()
-train_loader_a, train_loader_b, test_loader_a, test_loader_b = get_all_data_loaders(config)
-train_display_images_a = torch.stack([train_loader_a.dataset[i] for i in range(display_size)]).cuda()
-train_display_images_b = torch.stack([train_loader_b.dataset[i] for i in range(display_size)]).cuda()
-test_display_images_a = torch.stack([test_loader_a.dataset[i] for i in range(display_size)]).cuda()
-test_display_images_b = torch.stack([test_loader_b.dataset[i] for i in range(display_size)]).cuda()
+train_loader_a, train_loader_b, test_loader_a, test_loader_b = get_all_data_loaders(
+    config)
+train_display_images_a = torch.stack(
+    [train_loader_a.dataset[i] for i in range(display_size)]).cuda()
+train_display_images_b = torch.stack(
+    [train_loader_b.dataset[i] for i in range(display_size)]).cuda()
+test_display_images_a = torch.stack(
+    [test_loader_a.dataset[i] for i in range(display_size)]).cuda()
+test_display_images_b = torch.stack(
+    [test_loader_b.dataset[i] for i in range(display_size)]).cuda()
 
-test_ref_display_images_a = torch.stack([test_loader_a.dataset[display_size + i] for i in range(display_size)]).cuda()
-test_ref_display_images_b = torch.stack([test_loader_b.dataset[display_size + i] for i in range(display_size)]).cuda()
+test_ref_display_images_a = torch.stack(
+    [test_loader_a.dataset[display_size + i] for i in range(display_size)]).cuda()
+test_ref_display_images_b = torch.stack(
+    [test_loader_b.dataset[display_size + i] for i in range(display_size)]).cuda()
 
 # Setup logger and output folders
 model_name = os.path.splitext(os.path.basename(opts.config))[0]
-train_writer = tensorboardX.SummaryWriter(os.path.join(opts.output_path + "/logs", model_name))
+train_writer = tensorboardX.SummaryWriter(
+    os.path.join(opts.output_path + "/logs", model_name))
 output_directory = os.path.join(opts.output_path + "/outputs", model_name)
 checkpoint_directory, image_directory = prepare_sub_folder(output_directory)
-shutil.copy(opts.config, os.path.join(output_directory, 'config.yaml'))  # copy config file to output folder
+# copy config file to output folder
+shutil.copy(opts.config, os.path.join(output_directory, 'config.yaml'))
 
 # Start training
-iterations = trainer.resume(checkpoint_directory, hyperparameters=config) if opts.resume else 0
+iterations = trainer.resume(
+    checkpoint_directory, hyperparameters=config) if opts.resume else 0
 while True:
     for it, (images_a, images_b) in enumerate(zip(train_loader_a, train_loader_b)):
         trainer.update_learning_rate()
@@ -96,20 +112,28 @@ while True:
         # Write images
         if (iterations + 1) % config['image_save_iter'] == 0:
             with torch.no_grad():
-                test_image_outputs = trainer.sample(test_display_images_a, test_display_images_b)
-                train_image_outputs = trainer.sample(train_display_images_a, train_display_images_b)
+                test_image_outputs = trainer.sample(
+                    test_display_images_a, test_display_images_b)
+                train_image_outputs = trainer.sample(
+                    train_display_images_a, train_display_images_b)
                 test_image_ref_outputs = trainer.sample_ref(test_display_images_a, test_display_images_b,
                                                             test_ref_display_images_a, test_ref_display_images_b)
-            write_2images(test_image_outputs, display_size, image_directory, 'test_%08d' % (iterations + 1))
-            write_2images(test_image_ref_outputs, display_size, image_directory, 'test_ref_%08d' % (iterations + 1))
-            write_2images(train_image_outputs, display_size, image_directory, 'train_%08d' % (iterations + 1))
+            write_2images(test_image_outputs, display_size,
+                          image_directory, 'test_%08d' % (iterations + 1))
+            write_2images(test_image_ref_outputs, display_size,
+                          image_directory, 'test_ref_%08d' % (iterations + 1))
+            write_2images(train_image_outputs, display_size,
+                          image_directory, 'train_%08d' % (iterations + 1))
             # HTML
-            write_html(output_directory + "/index.html", iterations + 1, config['image_save_iter'], 'images')
+            write_html(output_directory + "/index.html",
+                       iterations + 1, config['image_save_iter'], 'images')
 
         if (iterations + 1) % config['image_display_iter'] == 0:
             with torch.no_grad():
-                image_outputs = trainer.sample(train_display_images_a, train_display_images_b)
-            write_2images(image_outputs, display_size, image_directory, 'train_current')
+                image_outputs = trainer.sample(
+                    train_display_images_a, train_display_images_b)
+            write_2images(image_outputs, display_size,
+                          image_directory, 'train_current')
 
         # Save network weights
         if (iterations + 1) % config['snapshot_save_iter'] == 0:
