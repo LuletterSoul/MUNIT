@@ -126,17 +126,19 @@ class SANet(nn.Module):
     def forward(self, content_code, style_code=None):
         F = self.f(mean_variance_norm(content_code))
         if style_code is not None:
-            self.style_code = style_code
-        G = self.g(mean_variance_norm(self.style_code))
-        H = self.h(self.style_code)
+            self.style_code = style_code  # b * c * h * w
+        G = self.g(mean_variance_norm(self.style_code))  # b * c * h * w
+        H = self.h(self.style_code)  # b * c * h * w
         b, c, h, w = F.size()
-        F = F.view(b, -1, w * h).permute(0, 2, 1)
+        F = F.view(b, -1, w * h).permute(0, 2, 1)  # b *(h * w) * c
         b, c, h, w = G.size()
-        G = G.view(b, -1, w * h)
+        G = G.view(b, -1, w * h)  # b * c * (h * w)
+        # b* (h * w) * (h * w) similarity between content code with style code
         S = torch.bmm(F, G)
-        S = self.sm(S)
+        S = self.sm(S)  # b * (h * w) * (h * w) softmax across column dimension
         b, c, h, w = H.size()
-        H = H.view(b, -1, w * h)
+        H = H.view(b, -1, w * h)  # b * c * (h * w)
+        # b * [c * (h * w)]  @ b * [(h * w) * (h * w)] = b * c * (h * w)
         O = torch.bmm(H, S.permute(0, 2, 1))
         b, c, h, w = content_code.size()
         O = O.view(b, c, h, w)
@@ -421,6 +423,34 @@ class StyleEncoder(nn.Module):
         return self.model(x)
 
 
+<< << << < HEAD
+== == == =
+
+
+class MirrorStyleEncoder(nn.Module):
+    def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type):
+        super(MirrorStyleEncoder, self).__init__()
+        self.model = []
+        self.model += [Conv2dBlock(input_dim, dim, 7, 1, 3,
+                                   norm=norm, activation=activ, pad_type=pad_type)]
+        # downsampling blocks
+        for i in range(n_downsample):
+            self.model += [Conv2dBlock(dim, 2 * dim, 4, 2, 1,
+                                       norm=norm, activation=activ, pad_type=pad_type)]
+            dim *= 2
+        # residual blocks
+        self.model += [ResBlocks(n_res, dim, norm=norm,
+                                 activation=activ, pad_type=pad_type)]
+        self.model = nn.Sequential(*self.model)
+        self.output_dim = dim
+
+    def forward(self, x):
+        return self.model(x)
+
+
+>>>>>> > 3a9719cae4bf226755513a73abb0fe37e0dbfc7a
+
+
 class MultiLevelStyleEncoder(nn.Module):
     def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type, level):
         super(MultiLevelStyleEncoder, self).__init__()
@@ -504,27 +534,6 @@ class MultiLevelSADecoder(nn.Module):
 class ContentEncoder(nn.Module):
     def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type):
         super(ContentEncoder, self).__init__()
-        self.model = []
-        self.model += [Conv2dBlock(input_dim, dim, 7, 1, 3,
-                                   norm=norm, activation=activ, pad_type=pad_type)]
-        # downsampling blocks
-        for i in range(n_downsample):
-            self.model += [Conv2dBlock(dim, 2 * dim, 4, 2, 1,
-                                       norm=norm, activation=activ, pad_type=pad_type)]
-            dim *= 2
-        # residual blocks
-        self.model += [ResBlocks(n_res, dim, norm=norm,
-                                 activation=activ, pad_type=pad_type)]
-        self.model = nn.Sequential(*self.model)
-        self.output_dim = dim
-
-    def forward(self, x):
-        return self.model(x)
-
-
-class MirrorStyleEncoder(nn.Module):
-    def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type):
-        super(MirrorStyleEncoder, self).__init__()
         self.model = []
         self.model += [Conv2dBlock(input_dim, dim, 7, 1, 3,
                                    norm=norm, activation=activ, pad_type=pad_type)]
