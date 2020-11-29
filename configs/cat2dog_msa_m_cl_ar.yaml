@@ -26,6 +26,8 @@ recon_c_w: 1                  # weight of content reconstruction loss
 recon_x_cyc_w: 0              # weight of explicit style augmented cycle consistency loss
 ds_w : 0.2                    
 vgg_w: 0                      # weight of domain-invariant perceptual loss
+scale: 2
+use_mapping: false
 
 # model options
 gen:
@@ -33,17 +35,16 @@ gen:
   mlp_dim: 256                # number of filters in MLP
   style_dim: 8                # length of style code
   activ: relu                 # activation function [relu/lrelu/prelu/selu/tanh]
-  n_downsample: 2             # number of downsampling layers in content encoder
+  n_downsample: 3             # number of downsampling layers in content encoder
   n_res: 4                    # number of residual blocks in content encoder/decoder
   pad_type: reflect           # padding type [zero/reflect]
   style_encoder_type: mirror
   style_code_dim: 256 * 64 * 64
   n_blk: 2
   mlp_type: mlp
-  level: 1
-  mapping_layers: 3
-  use_mapping: false
-  style_criterion: mu
+  mapping_layers: 5
+  style_criterion: recon
+  scale: 2
 dis:
   update_internal: 2
   dim: 64                     # number of filters in the bottommost layer

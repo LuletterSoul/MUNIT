@@ -1,0 +1,26 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "train_msa",
+            "type": "python",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
+            "request": "launch",
+            "args": [
+                "--trainer",
+                "MSANET",
+                "--output_path",
+                "output/1128_cat2dog_sa1_m_cl_ar_w0.2",
+                "--config",
+                "configs/cat2dog_msa_m_cl_ar.yaml"
+            ],
+            "program": "train.py",
+            "console": "integratedTerminal"
+        }
+    ]
+}
