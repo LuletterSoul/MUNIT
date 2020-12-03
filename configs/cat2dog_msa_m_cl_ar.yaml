@@ -2,10 +2,10 @@
 # Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 
 # logger options
-image_save_iter: 10000        # How often do you want to save output images during training
-image_display_iter: 500 # How often do you want to display output images during training
+image_save_iter: 5000     # How often do you want to save output images during training
+image_display_iter: 500   # How often do you want to display output images during training
 display_size: 16              # How many images do you want to display each time
-snapshot_save_iter: 10000     # How often do you want to save trained models
+snapshot_save_iter: 5000     # How often do you want to save trained models
 log_iter: 10                  # How often do you want to log the training stats
 
 # optimization options
@@ -27,7 +27,8 @@ recon_x_cyc_w: 0              # weight of explicit style augmented cycle consist
 ds_w : 0.2                    
 vgg_w: 0                      # weight of domain-invariant perceptual loss
 scale: 2
-use_mapping: false
+rn_use_mapping: true
+ref_use_mapping: false
 
 # model options
 gen:

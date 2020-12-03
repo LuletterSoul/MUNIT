@@ -78,6 +78,9 @@ class MultiScaleStyleEncoder(nn.Module):
 
         x = self.model[0](x)
         codes = []
+        # 128 * 128 * 128
+        # 256 *  64 * 64
+        # 512 * 32 * 32
         for m in self.model[1:1+self.n_downsample]:
             x = m(x)
             codes.append(x)
@@ -90,7 +93,7 @@ class MultiScaleStyleEncoder(nn.Module):
 
 class UpsampleBlock(nn.Module):
     def __init__(self, input_dim, output_dim, kernel_size, stride,
-                 padding=0, norm='none', activation='relu', pad_type='zero') -> None:
+                 padding=0, norm='none', activation='relu', pad_type='zero', addition_dim=0, fusion=False) -> None:
         super(UpsampleBlock, self).__init__()
 
         self.up = nn.Upsample(scale_factor=2)
@@ -99,6 +102,38 @@ class UpsampleBlock(nn.Module):
 
     def forward(self, x):
         x = self.up(x)
+        x = self.conv(x)
+
+        return x
+
+
+class FusionUpsampleBlock(nn.Module):
+    def __init__(self, input_dim, output_dim, kernel_size, stride,
+                 padding=0, norm='none', activation='relu', pad_type='zero', addition_dim=0,fusion='cat') -> None:
+        super(FusionUpsampleBlock, self).__init__()
+
+        self.up = nn.Upsample(scale_factor=2)
+        self.align_conv = Conv2dBlock(addition_dim, input_dim,
+                                       1, 1, 0, norm, activation, pad_type)
+        self.fusion = fusion
+                            
+        if fusion == 'cat':
+            self.fusion_cat_conv = Conv2dBlock(input_dim * 2, output_dim,
+                                       1, 1, 0, norm, activation, pad_type)
+            self.conv= Conv2dBlock(output_dim, output_dim,
+                                       kernel_size, stride, padding, norm, activation, pad_type)
+        else:
+            self.conv = Conv2dBlock(input_dim, output_dim,
+                                kernel_size, stride, padding, norm, activation, pad_type)
+
+    def forward(self, x, fusion_x):
+
+        fusion_x = self.up(self.align_conv(fusion_x))
+        if self.fusion == 'cat':
+            x = torch.cat([x,fusion_x],dim=1)
+            x = self.up(self.fusion_cat_conv(x))
+        else:
+            x = self.up(x + fusion_x)
         x = self.conv(x)
 
         return x
@@ -118,14 +153,19 @@ class MultiScaleSADecoder(nn.Module):
             [SANet(dim // (2 ** l), dim // (2 ** l), dim // (2 ** l)) for l in range(scale)])
 
         self.n_unpsample = n_upsample
-        self.level = scale
+        self.scale = scale
 
         # upsampling blocks
         for i in range(n_upsample):
             # self.model += [nn.Upsample(scale_factor=2),
             #    Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)]
-            self.model += [UpsampleBlock(dim, dim // 2, 5, 1, 2,
-                                         norm='ln', activation=activ, pad_type=pad_type)]
+            if 0 < i < self.scale:
+                self.model += [FusionUpsampleBlock(dim, dim // 2, 5, 1, 2,
+                                                   norm='ln', activation=activ, pad_type=pad_type, addition_dim=dim * 2)]
+            else:
+                self.model += [UpsampleBlock(dim, dim // 2, 5, 1, 2,
+                                             norm='ln', activation=activ, pad_type=pad_type)]
+
             dim //= 2
         # use reflection padding in the last conv layer
 
@@ -139,11 +179,22 @@ class MultiScaleSADecoder(nn.Module):
 
         x = self.model[0](x)
 
+        fusion_feats = []
+
         for i in range(self.n_unpsample):
-            if i < self.level:
+            if i < 1:
+                # don't fusion in the first layer.
                 x = self.sanet_modules[i](
                     x, style_feats[-(i+1)])
-            x = self.model[1+i](x)
+                fusion_feats.append(x)
+                x = self.model[1+i](x)
+            elif 0 < i < self.scale:
+                x = self.sanet_modules[i](
+                    x, style_feats[-(i+1)])
+                x = self.model[1+i](x, fusion_feats[i-1])
+                fusion_feats.append(x)
+            else:
+                x = self.model[1+i](x)
 
         x = self.model[-1](x)
 
@@ -168,6 +219,7 @@ class MultiScaleSAGen(nn.Module):
         self.activ = params['activ']
         self.mlp_type = params['mlp_type']
         self.mapping_layers = params['mapping_layers']
+        self.scale = params['scale']
 
         # content encoder
         self.enc_content = MultiScaleContentEncoder(
@@ -178,12 +230,16 @@ class MultiScaleSAGen(nn.Module):
 
         self.mapping_nets = []
         map_dim = self.enc_content.output_dim
-        for i in range(self.mapping_layers):
-            self.mapping_nets.append(
-                Conv2dBlock(map_dim, map_dim, 1, 1,
-                            activation='lrelu')
-            )
-        self.mapping_nets = nn.Sequential(*self.mapping_nets)
+        for j in range(n_downsample):
+            mapping_net = ModuleList()
+            for i in range(self.mapping_layers):
+                mapping_net.append(
+                    Conv2dBlock(map_dim, map_dim, 1, 1,
+                                activation='lrelu'))
+            map_dim //= 2
+            self.mapping_nets.append(nn.Sequential(*mapping_net))
+        self.mapping_nets.reverse()
+        self.mapping_nets = ModuleList(self.mapping_nets)
         self.dec = MultiScaleSADecoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='none',
                                        activ=activ,
                                        pad_type=pad_type, scale=params['scale'])
@@ -202,8 +258,9 @@ class MultiScaleSAGen(nn.Module):
         # for i in range(len(style_feats)):
         # print(style_feats[i].size())
         if use_mapping:
-            style_feats[-1] = self.mapping_nets(
-                style_feats[-1]).view_as(content_feats[-1])
+            for i in range(self.scale):
+                style_feats[i] = self.mapping_nets[i](
+                    style_feats[i]).view_as(content_feats[i])
         images = self.dec(content_feats, style_feats)
         return images
 
@@ -275,7 +332,8 @@ class MultiScaleSANET_Trainer(nn.Module):
         # fix the noise used in sampling
         display_size = int(hyperparameters['display_size'])
         self.gram_mse_loss = GramMSELoss()
-        self.use_mapping = hyperparameters['use_mapping']
+        self.rn_use_mapping = hyperparameters['rn_use_mapping']
+        self.ref_use_mapping = hyperparameters['ref_use_mapping']
 
         # Setup the optimizers
         beta1 = hyperparameters['beta1']
@@ -348,18 +406,22 @@ class MultiScaleSANET_Trainer(nn.Module):
         s_a_rn_feats, s_b_rn_feats = self.sample_multi_scale_style_code(
             c_a_feats, c_b_feats)
         # decode (within domain)
-        x_a_recon = self.gen_a.decode(c_a_feats, s_a_feats)
-        x_b_recon = self.gen_b.decode(c_b_feats, s_b_feats)
+        x_a_recon = self.gen_a.decode(
+            c_a_feats, s_a_feats, use_mapping=self.ref_use_mapping)
+        x_b_recon = self.gen_b.decode(
+            c_b_feats, s_b_feats, use_mapping=self.ref_use_mapping)
 
         # decode (cross domain) using style code from normal distribution
         x_ba = self.gen_a.decode(
-            c_b_feats, s_a_rn_feats, use_mapping=self.use_mapping)
+            c_b_feats, s_a_rn_feats, use_mapping=self.rn_use_mapping)
         x_ab = self.gen_b.decode(
-            c_a_feats, s_b_rn_feats, use_mapping=self.use_mapping)
+            c_a_feats, s_b_rn_feats, use_mapping=self.rn_use_mapping)
 
         # decode (cross domain) using style code from style encoder
-        x_real_ba = self.gen_a.decode(c_b_feats, s_a_feats)
-        x_real_ab = self.gen_b.decode(c_a_feats, s_b_feats)
+        x_real_ba = self.gen_a.decode(
+            c_b_feats, s_a_feats, use_mapping=self.ref_use_mapping)
+        x_real_ab = self.gen_b.decode(
+            c_a_feats, s_b_feats, use_mapping=self.ref_use_mapping)
 
         # encode again
         c_b_recon, c_b_recon_feats, s_a_recon, s_ba_recon_feats = self.gen_a.encode(
@@ -374,9 +436,9 @@ class MultiScaleSANET_Trainer(nn.Module):
 
         # decode again (if needed)
         x_aba = self.gen_a.decode(
-            c_a_recon_feats, s_a_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
+            c_a_recon_feats, s_a_feats, use_mapping=self.ref_use_mapping) if hyperparameters['recon_x_cyc_w'] > 0 else None
         x_bab = self.gen_b.decode(
-            c_b_recon_feats,  s_b_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
+            c_b_recon_feats, s_b_feats, use_mapping=self.ref_use_mapping) if hyperparameters['recon_x_cyc_w'] > 0 else None
 
         # image reconstruction loss
         self.loss_gen_recon_x_a = self.recon_criterion(x_a_recon, x_a)
@@ -393,9 +455,9 @@ class MultiScaleSANET_Trainer(nn.Module):
         s_a_rn_feats2, s_b_rn_feats2 = self.sample_multi_scale_style_code(
             c_a_feats, c_b_feats)
         x_ba2 = self.gen_a.decode(
-            c_b_feats, s_a_rn_feats2)
+            c_b_feats, s_a_rn_feats2, use_mapping=self.rn_use_mapping)
         x_ab2 = self.gen_b.decode(
-            c_a_feats, s_b_rn_feats)
+            c_a_feats, s_b_rn_feats2, use_mapping=self.rn_use_mapping)
         # self.loss_diversity_loss_ba = - torch.mean(torch.abs(x_ba2 - x_ba))
         # self.loss_diversity_loss_ab = - torch.mean(torch.abs(x_ab2 - x_ab))
         self.loss_anti_collapse_ba = self.anti_collapse_criterion(
@@ -410,6 +472,12 @@ class MultiScaleSANET_Trainer(nn.Module):
         self.loss_gen_recon_real_c_b = 0
 
         for i in range(self.scale):
+
+            s_real_a_recon_feats[i] = s_real_a_recon_feats[i] if not self.ref_use_mapping else self.gen_a.mapping_nets[i](
+                s_real_a_recon_feats[i])
+            s_real_b_recon_feats[i] = s_real_b_recon_feats[i] if not self.ref_use_mapping else self.gen_b.mapping_nets[i](
+                s_real_b_recon_feats[i])
+
             self.loss_gen_recon_real_s_a += self.style_recon_criterion(
                 s_real_a_recon_feats[i], s_a_feats[i])
             self.loss_gen_recon_real_s_b += self.style_recon_criterion(
@@ -426,6 +494,12 @@ class MultiScaleSANET_Trainer(nn.Module):
 
         # latent reconstruction loss(random sample branch)
         for i in range(self.scale):
+
+            s_ba_recon_feats[i] = s_ba_recon_feats[i] if not self.rn_use_mapping else self.gen_a.mapping_nets[i](
+                s_ba_recon_feats[i])
+            s_ab_recon_feats[i] = s_ab_recon_feats[i] if not self.rn_use_mapping else self.gen_b.mapping_nets[i](
+                s_ab_recon_feats[i])
+
             self.loss_gen_recon_s_a += self.style_recon_criterion(
                 s_ba_recon_feats[i], s_a_rn_feats[i])
             self.loss_gen_recon_s_b += self.style_recon_criterion(
@@ -450,6 +524,7 @@ class MultiScaleSANET_Trainer(nn.Module):
             self.vgg, x_ba, x_b) if hyperparameters['vgg_w'] > 0 else 0
         self.loss_gen_vgg_b = self.compute_vgg_loss(
             self.vgg, x_ab, x_a) if hyperparameters['vgg_w'] > 0 else 0
+
         # total loss
         self.loss_gen_total = hyperparameters['gan_w'] * self.loss_gen_adv_a + \
             hyperparameters['gan_w'] * self.loss_gen_adv_b + \
@@ -520,20 +595,22 @@ class MultiScaleSANET_Trainer(nn.Module):
                 x_a[i].unsqueeze(0))
             c_b, c_b_feats, s_b, s_b_feats = self.gen_b.encode(
                 x_b[i].unsqueeze(0))
-            x_a_recon.append(self.gen_a.decode(c_a_feats, s_a_feats))
-            x_b_recon.append(self.gen_b.decode(c_b_feats, s_b_feats))
+            x_a_recon.append(self.gen_a.decode(
+                c_a_feats, s_a_feats, use_mapping=self.ref_use_mapping))
+            x_b_recon.append(self.gen_b.decode(
+                c_b_feats, s_b_feats, use_mapping=self.ref_use_mapping))
             s_a_rn_feats1_prime = [s[i].unsqueeze(0) for s in s_a_rn_feats1]
             s_a_rn_feats2_prime = [s[i].unsqueeze(0) for s in s_a_rn_feats2]
             s_b_rn_feats1_prime = [s[i].unsqueeze(0) for s in s_b_rn_feats1]
             s_b_rn_feats2_prime = [s[i].unsqueeze(0) for s in s_b_rn_feats2]
             x_ba1.append(self.gen_a.decode(
-                c_b_feats, s_a_rn_feats1_prime))
+                c_b_feats, s_a_rn_feats1_prime, use_mapping=self.rn_use_mapping))
             x_ba2.append(self.gen_a.decode(
-                c_b_feats, s_a_rn_feats2_prime))
+                c_b_feats, s_a_rn_feats2_prime, use_mapping=self.rn_use_mapping))
             x_ab1.append(self.gen_b.decode(
-                c_a_feats, s_b_rn_feats1_prime))
+                c_a_feats, s_b_rn_feats1_prime, use_mapping=self.rn_use_mapping))
             x_ab2.append(self.gen_b.decode(
-                c_a_feats, s_b_rn_feats2_prime))
+                c_a_feats, s_b_rn_feats2_prime, use_mapping=self.rn_use_mapping))
         x_a_recon, x_b_recon = torch.cat(x_a_recon), torch.cat(x_b_recon)
         x_ba1, x_ba2 = torch.cat(x_ba1), torch.cat(x_ba2)
         x_ab1, x_ab2 = torch.cat(x_ab1), torch.cat(x_ab2)
@@ -552,11 +629,15 @@ class MultiScaleSANET_Trainer(nn.Module):
                 x_a_ref[i].unsqueeze(0))
             c_b_ref, c_b_ref_feats, s_b_ref, s_b_ref_feats = self.gen_b.encode(
                 x_b_ref[i].unsqueeze(0))
-            x_a_recon.append(self.gen_a.decode(c_a_feats, s_a_feats))
-            x_b_recon.append(self.gen_b.decode(c_b_feats, s_b_feats))
-            x_ba1.append(self.gen_a.decode(c_b_feats, s_a_ref_feats))
+            x_a_recon.append(self.gen_a.decode(
+                c_a_feats, s_a_feats, use_mapping=self.ref_use_mapping))
+            x_b_recon.append(self.gen_b.decode(
+                c_b_feats, s_b_feats, use_mapping=self.ref_use_mapping))
+            x_ba1.append(self.gen_a.decode(
+                c_b_feats, s_a_ref_feats, use_mapping=self.ref_use_mapping))
             # x_ba2.append(self.gen_a.decode(c_b, s_a2[i].unsqueeze(0)))
-            x_ab1.append(self.gen_b.decode(c_a_feats, s_b_ref_feats))
+            x_ab1.append(self.gen_b.decode(
+                c_a_feats, s_b_ref_feats, use_mapping=self.ref_use_mapping))
             # x_ab2.append(self.gen_b.decode(c_a, s_b2[i].unsqueeze(0)))
         #
         x_a_recon, x_b_recon = torch.cat(x_a_recon), torch.cat(x_b_recon)
@@ -579,8 +660,10 @@ class MultiScaleSANET_Trainer(nn.Module):
             c_a_feats, c_b_feats)
 
         # decode (cross domain)
-        x_ba = self.gen_a.decode(c_b_feats, s_a_rn_feats)
-        x_ab = self.gen_b.decode(c_a_feats, s_b_rn_feats)
+        x_ba = self.gen_a.decode(
+            c_b_feats, s_a_rn_feats, use_mapping=self.rn_use_mapping)
+        x_ab = self.gen_b.decode(
+            c_a_feats, s_b_rn_feats, use_mapping=self.rn_use_mapping)
 
         x_real_ba = self.gen_a.decode(c_b_feats, s_a_feats)
         x_real_ab = self.gen_b.decode(c_a_feats, s_b_feats)
