@@ -113,8 +113,8 @@ class FusionUpsampleBlock(nn.Module):
         super(FusionUpsampleBlock, self).__init__()
 
         self.up = nn.Upsample(scale_factor=2)
-        self.align_conv = Conv2dBlock(addition_dim, input_dim,
-                                       1, 1, 0, norm, activation, pad_type)
+        # self.align_conv = Conv2dBlock(addition_dim, input_dim,
+                                    #    1, 1, 0, norm, activation, pad_type)
         self.fusion = fusion
                             
         if fusion == 'cat':
@@ -128,7 +128,8 @@ class FusionUpsampleBlock(nn.Module):
 
     def forward(self, x, fusion_x):
 
-        fusion_x = self.up(self.align_conv(fusion_x))
+        # fusion_x = self.up(self.align_conv(fusion_x))
+        # fusion_x = self.align_conv(fusion_x)
         if self.fusion == 'cat':
             x = torch.cat([x,fusion_x],dim=1)
             x = self.up(self.fusion_cat_conv(x))
@@ -157,9 +158,7 @@ class MultiScaleSADecoder(nn.Module):
 
         # upsampling blocks
         for i in range(n_upsample):
-            # self.model += [nn.Upsample(scale_factor=2),
-            #    Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)]
-            if 0 < i < self.scale:
+            if  i < self.scale:
                 self.model += [FusionUpsampleBlock(dim, dim // 2, 5, 1, 2,
                                                    norm='ln', activation=activ, pad_type=pad_type, addition_dim=dim * 2)]
             else:
@@ -167,32 +166,23 @@ class MultiScaleSADecoder(nn.Module):
                                              norm='ln', activation=activ, pad_type=pad_type)]
 
             dim //= 2
-        # use reflection padding in the last conv layer
-
         self.model += [Conv2dBlock(dim, output_dim, 7, 1, 3,
                                    norm='none', activation='tanh', pad_type=pad_type)]
         self.model = nn.Sequential(*self.model)
 
     def forward(self, content_feats, style_feats):
 
+        # the first feature fusion based style-attention
         x = self.sanet_head(content_feats[-1], style_feats[-1])
 
         x = self.model[0](x)
-
-        fusion_feats = []
-
         for i in range(self.n_unpsample):
-            if i < 1:
-                # don't fusion in the first layer.
-                x = self.sanet_modules[i](
-                    x, style_feats[-(i+1)])
-                fusion_feats.append(x)
-                x = self.model[1+i](x)
-            elif 0 < i < self.scale:
-                x = self.sanet_modules[i](
-                    x, style_feats[-(i+1)])
-                x = self.model[1+i](x, fusion_feats[i-1])
-                fusion_feats.append(x)
+            if  i < self.scale:
+                # the latter feature fusion based style-attention
+                # calculate each attention map for style code and content code in current layer
+                x_sa = self.sanet_modules[i](
+                    content_feats[-(i+1)], style_feats[-(i+1)])
+                x = self.model[1+i](x, x_sa)
             else:
                 x = self.model[1+i](x)
 
@@ -226,7 +216,7 @@ class MultiScaleSAGen(nn.Module):
             n_downsample, n_res, input_dim, dim, 'in', activ, pad_type=pad_type)
 
         self.enc_style = MultiScaleStyleEncoder(
-            n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
+            n_downsample, n_res, input_dim, dim, 'in', activ, pad_type=pad_type)
 
         self.mapping_nets = []
         map_dim = self.enc_content.output_dim
@@ -235,7 +225,8 @@ class MultiScaleSAGen(nn.Module):
             for i in range(self.mapping_layers):
                 mapping_net.append(
                     Conv2dBlock(map_dim, map_dim, 1, 1,
-                                activation='lrelu'))
+                                activation='lrelu',norm='in')
+                    )
             map_dim //= 2
             self.mapping_nets.append(nn.Sequential(*mapping_net))
         self.mapping_nets.reverse()
