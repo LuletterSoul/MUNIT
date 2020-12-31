@@ -10,7 +10,7 @@ log_iter: 10                  # How often do you want to log the training stats
 
 # optimization options
 max_iter: 1100000             # maximum number of training iterations
-batch_size:   3               # batch size
+batch_size:   4               # batch size
 weight_decay: 0.0001          # weight decay
 beta1: 0.5                    # Adam parameter
 beta2: 0.999                  # Adam parameter
@@ -27,8 +27,8 @@ recon_x_cyc_w: 0              # weight of explicit style augmented cycle consist
 ds_w : 0.2                    
 vgg_w: 0                      # weight of domain-invariant perceptual loss
 scale: 2
-rn_use_mapping: true
-ref_use_mapping: true
+rn_use_mapping: false
+ref_use_mapping: false
 
 # model options
 gen:

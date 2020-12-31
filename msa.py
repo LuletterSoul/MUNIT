@@ -216,7 +216,7 @@ class MultiScaleSAGen(nn.Module):
             n_downsample, n_res, input_dim, dim, 'in', activ, pad_type=pad_type)
 
         self.enc_style = MultiScaleStyleEncoder(
-            n_downsample, n_res, input_dim, dim, 'in', activ, pad_type=pad_type)
+            n_downsample, n_res, input_dim, dim, 'none', activ, pad_type=pad_type)
 
         self.mapping_nets = []
         map_dim = self.enc_content.output_dim
@@ -225,7 +225,7 @@ class MultiScaleSAGen(nn.Module):
             for i in range(self.mapping_layers):
                 mapping_net.append(
                     Conv2dBlock(map_dim, map_dim, 1, 1,
-                                activation='lrelu',norm='in')
+                                activation='lrelu',norm='bn')
                     )
             map_dim //= 2
             self.mapping_nets.append(nn.Sequential(*mapping_net))
@@ -403,10 +403,10 @@ class MultiScaleSANET_Trainer(nn.Module):
             c_b_feats, s_b_feats, use_mapping=self.ref_use_mapping)
 
         # decode (cross domain) using style code from normal distribution
-        x_ba = self.gen_a.decode(
-            c_b_feats, s_a_rn_feats, use_mapping=self.rn_use_mapping)
-        x_ab = self.gen_b.decode(
-            c_a_feats, s_b_rn_feats, use_mapping=self.rn_use_mapping)
+        # x_ba = self.gen_a.decode(
+        #     c_b_feats, s_a_rn_feats, use_mapping=self.rn_use_mapping)
+        # x_ab = self.gen_b.decode(
+        #     c_a_feats, s_b_rn_feats, use_mapping=self.rn_use_mapping)
 
         # decode (cross domain) using style code from style encoder
         x_real_ba = self.gen_a.decode(
@@ -415,10 +415,10 @@ class MultiScaleSANET_Trainer(nn.Module):
             c_a_feats, s_b_feats, use_mapping=self.ref_use_mapping)
 
         # encode again
-        c_b_recon, c_b_recon_feats, s_a_recon, s_ba_recon_feats = self.gen_a.encode(
-            x_ba)
-        c_a_recon, c_a_recon_feats, s_b_recon, s_ab_recon_feats = self.gen_b.encode(
-            x_ab)
+        # c_b_recon, c_b_recon_feats, s_a_recon, s_ba_recon_feats = self.gen_a.encode(
+        #     x_ba)
+        # c_a_recon, c_a_recon_feats, s_b_recon, s_ab_recon_feats = self.gen_b.encode(
+        #     x_ab)
 
         c_real_b_recon, c_real_b_recon_feats, s_real_a_recon, s_real_a_recon_feats = self.gen_a.encode(
             x_real_ba)
@@ -426,10 +426,10 @@ class MultiScaleSANET_Trainer(nn.Module):
             x_real_ab)
 
         # decode again (if needed)
-        x_aba = self.gen_a.decode(
-            c_a_recon_feats, s_a_feats, use_mapping=self.ref_use_mapping) if hyperparameters['recon_x_cyc_w'] > 0 else None
-        x_bab = self.gen_b.decode(
-            c_b_recon_feats, s_b_feats, use_mapping=self.ref_use_mapping) if hyperparameters['recon_x_cyc_w'] > 0 else None
+        # x_aba = self.gen_a.decode(
+        #     c_a_recon_feats, s_a_feats, use_mapping=self.ref_use_mapping) if hyperparameters['recon_x_cyc_w'] > 0 else None
+        # x_bab = self.gen_b.decode(
+        #     c_b_recon_feats, s_b_feats, use_mapping=self.ref_use_mapping) if hyperparameters['recon_x_cyc_w'] > 0 else None
 
         # image reconstruction loss
         self.loss_gen_recon_x_a = self.recon_criterion(x_a_recon, x_a)
@@ -451,10 +451,12 @@ class MultiScaleSANET_Trainer(nn.Module):
             c_a_feats, s_b_rn_feats2, use_mapping=self.rn_use_mapping)
         # self.loss_diversity_loss_ba = - torch.mean(torch.abs(x_ba2 - x_ba))
         # self.loss_diversity_loss_ab = - torch.mean(torch.abs(x_ab2 - x_ab))
-        self.loss_anti_collapse_ba = self.anti_collapse_criterion(
-            s_a_rn_feats[-1], s_a_rn_feats2[-1], x_ba, x_ba2).mean()
-        self.loss_anti_collapse_ab = self.anti_collapse_criterion(
-            s_b_rn_feats[-1], s_b_rn_feats2[-1], x_ab, x_ab2).mean()
+        # self.loss_anti_collapse_ba = self.anti_collapse_criterion(
+            # s_a_rn_feats[-1], s_a_rn_feats2[-1], x_ba, x_ba2).mean()
+        # self.loss_anti_collapse_ab = self.anti_collapse_criterion(
+            # s_b_rn_feats[-1], s_b_rn_feats2[-1], x_ab, x_ab2).mean()
+        self.loss_anti_collapse_ba = 0
+        self.loss_anti_collapse_ab = 0
 
         # latent reconstruction loss(style encoder branch)
         self.loss_gen_recon_real_s_a = 0
@@ -484,37 +486,44 @@ class MultiScaleSANET_Trainer(nn.Module):
         self.loss_gen_recon_c_b = 0
 
         # latent reconstruction loss(random sample branch)
-        for i in range(self.scale):
+        # for i in range(self.scale):
 
-            s_ba_recon_feats[i] = s_ba_recon_feats[i] if not self.rn_use_mapping else self.gen_a.mapping_nets[i](
-                s_ba_recon_feats[i])
-            s_ab_recon_feats[i] = s_ab_recon_feats[i] if not self.rn_use_mapping else self.gen_b.mapping_nets[i](
-                s_ab_recon_feats[i])
+        #     s_ba_recon_feats[i] = s_ba_recon_feats[i] if not self.rn_use_mapping else self.gen_a.mapping_nets[i](
+        #         s_ba_recon_feats[i])
+        #     s_ab_recon_feats[i] = s_ab_recon_feats[i] if not self.rn_use_mapping else self.gen_b.mapping_nets[i](
+        #         s_ab_recon_feats[i])
 
-            self.loss_gen_recon_s_a += self.style_recon_criterion(
-                s_ba_recon_feats[i], s_a_rn_feats[i])
-            self.loss_gen_recon_s_b += self.style_recon_criterion(
-                s_ab_recon_feats[i], s_b_rn_feats[i])
-            self.loss_gen_recon_c_a += self.recon_criterion(
-                c_a_recon_feats[i], c_a_feats[i])
-            self.loss_gen_recon_c_b += self.recon_criterion(
-                c_b_recon_feats[i], c_b_feats[i])
+        #     self.loss_gen_recon_s_a += self.style_recon_criterion(
+        #         s_ba_recon_feats[i], s_a_rn_feats[i])
+        #     self.loss_gen_recon_s_b += self.style_recon_criterion(
+        #         s_ab_recon_feats[i], s_b_rn_feats[i])
+        #     self.loss_gen_recon_c_a += self.recon_criterion(
+        #         c_a_recon_feats[i], c_a_feats[i])
+        #     self.loss_gen_recon_c_b += self.recon_criterion(
+        #         c_b_recon_feats[i], c_b_feats[i])
 
-        self.loss_gen_cycrecon_x_a = self.recon_criterion(
-            x_aba, x_a) if hyperparameters['recon_x_cyc_w'] > 0 else 0
-        self.loss_gen_cycrecon_x_b = self.recon_criterion(
-            x_bab, x_b) if hyperparameters['recon_x_cyc_w'] > 0 else 0
+        # self.loss_gen_cycrecon_x_a = self.recon_criterion(
+            # x_aba, x_a) if hyperparameters['recon_x_cyc_w'] > 0 else 0
+        # self.loss_gen_cycrecon_x_b = self.recon_criterion(
+            # x_bab, x_b) if hyperparameters['recon_x_cyc_w'] > 0 else 0
 
+        self.loss_gen_cycrecon_x_a = 0
+        self.loss_gen_cycrecon_x_b = 0
         # GAN loss
-        self.loss_gen_adv_a = self.dis_a.calc_gen_loss(x_ba)
-        self.loss_gen_adv_b = self.dis_b.calc_gen_loss(x_ab)
+        # self.loss_gen_adv_a = self.dis_a.calc_gen_loss(x_ba)
+        # self.loss_gen_adv_b = self.dis_b.calc_gen_loss(x_ab)
+        self.loss_gen_adv_a = 0
+        self.loss_gen_adv_b = 0
+
         self.loss_gen_adv_real_a = self.dis_a.calc_gen_loss(x_real_ba)
         self.loss_gen_adv_real_b = self.dis_b.calc_gen_loss(x_real_ab)
         # domain-invariant perceptual loss
-        self.loss_gen_vgg_a = self.compute_vgg_loss(
-            self.vgg, x_ba, x_b) if hyperparameters['vgg_w'] > 0 else 0
-        self.loss_gen_vgg_b = self.compute_vgg_loss(
-            self.vgg, x_ab, x_a) if hyperparameters['vgg_w'] > 0 else 0
+        # self.loss_gen_vgg_a = self.compute_vgg_loss(
+            # self.vgg, x_ba, x_b) if hyperparameters['vgg_w'] > 0 else 0
+        # self.loss_gen_vgg_b = self.compute_vgg_loss(
+            # self.vgg, x_ab, x_a) if hyperparameters['vgg_w'] > 0 else 0
+        self.loss_gen_vgg_a = 0
+        self.loss_gen_vgg_b = 0
 
         # total loss
         self.loss_gen_total = hyperparameters['gan_w'] * self.loss_gen_adv_a + \
@@ -647,21 +656,23 @@ class MultiScaleSANET_Trainer(nn.Module):
         c_a, c_a_feats, s_a, s_a_feats = self.gen_a.encode(x_a)
         c_b, c_b_feats, s_b, s_b_feats = self.gen_b.encode(x_b)
 
-        s_a_rn_feats, s_b_rn_feats = self.sample_multi_scale_style_code(
-            c_a_feats, c_b_feats)
+        # s_a_rn_feats, s_b_rn_feats = self.sample_multi_scale_style_code(
+            # c_a_feats, c_b_feats)
 
         # decode (cross domain)
-        x_ba = self.gen_a.decode(
-            c_b_feats, s_a_rn_feats, use_mapping=self.rn_use_mapping)
-        x_ab = self.gen_b.decode(
-            c_a_feats, s_b_rn_feats, use_mapping=self.rn_use_mapping)
+        # x_ba = self.gen_a.decode(
+            # c_b_feats, s_a_rn_feats, use_mapping=self.rn_use_mapping)
+        # x_ab = self.gen_b.decode(
+            # c_a_feats, s_b_rn_feats, use_mapping=self.rn_use_mapping)
 
         x_real_ba = self.gen_a.decode(c_b_feats, s_a_feats)
         x_real_ab = self.gen_b.decode(c_a_feats, s_b_feats)
 
         # D loss
-        self.loss_dis_a = self.dis_a.calc_dis_loss(x_ba.detach(), x_a)
-        self.loss_dis_b = self.dis_b.calc_dis_loss(x_ab.detach(), x_b)
+        # self.loss_dis_a = self.dis_a.calc_dis_loss(x_ba.detach(), x_a)
+        # self.loss_dis_b = self.dis_b.calc_dis_loss(x_ab.detach(), x_b)
+        self.loss_dis_a = 0
+        self.loss_dis_b = 0
 
         self.loss_dis_real_a = self.dis_a.calc_dis_loss(
             x_real_ba.detach(), x_a)
