@@ -181,32 +181,32 @@ class SANET_Trainer(nn.Module):
 
         # decode (within domain)
         x_a_recon = self.gen_a.decode(c_a, s_a_prime, a_feats)
-        x_b_recon = self.gen_b.decode(c_b, s_b_prime, b_feats)
+        # x_b_recon = self.gen_b.decode(c_b, s_b_prime, b_feats)
 
         # decode (cross domain) using style code from normal distribution
         x_ba = self.gen_a.decode(c_b, s_a, a_srn_feats)
-        x_ab = self.gen_b.decode(c_a, s_b, b_srn_feats)
+        # x_ab = self.gen_b.decode(c_a, s_b, b_srn_feats)
 
         # decode (cross domain) using style code from style encoder
         x_real_ba = self.gen_a.decode(c_b, s_a_prime)
-        x_real_ab = self.gen_b.decode(c_a, s_b_prime)
+        # x_real_ab = self.gen_b.decode(c_a, s_b_prime)
 
         # encode again
         c_b_recon, s_a_recon, ba_feats = self.gen_a.encode(x_ba)
-        c_a_recon, s_b_recon, ab_feats = self.gen_b.encode(x_ab)
+        # c_a_recon, s_b_recon, ab_feats = self.gen_b.encode(x_ab)
 
         c_real_b_recon, s_real_a_recon, _ = self.gen_a.encode(x_real_ba)
-        c_real_a_recon, s_real_b_recon, _ = self.gen_b.encode(x_real_ab)
+        # c_real_a_recon, s_real_b_recon, _ = self.gen_b.encode(x_real_ab)
 
         # decode again (if needed)
-        x_aba = self.gen_a.decode(
-            c_a_recon, s_a_prime, a_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
-        x_bab = self.gen_b.decode(
-            c_b_recon, s_b_prime, b_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
+        # x_aba = self.gen_a.decode(
+            # c_a_recon, s_a_prime, a_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
+        # x_bab = self.gen_b.decode(
+            # c_b_recon, s_b_prime, b_feats) if hyperparameters['recon_x_cyc_w'] > 0 else None
 
         # image reconstruction loss
         self.loss_gen_recon_x_a = self.recon_criterion(x_a_recon, x_a)
-        self.loss_gen_recon_x_b = self.recon_criterion(x_b_recon, x_b)
+        # self.loss_gen_recon_x_b = self.recon_criterion(x_b_recon, x_b)
 
         # diversity sensitive loss
         # s_a2, s_b2, a_srn_feats2, b_srn_feats2 = self.sample_style_code(x_a, x_b, c_a, c_b, a_feats, b_feats)
@@ -219,65 +219,74 @@ class SANET_Trainer(nn.Module):
         s_a2, s_b2, a_srn_feats2, b_srn_feats2 = self.sample_style_code(
             x_a, x_b, c_a, c_b, a_feats, b_feats)
         x_ba2 = self.gen_a.decode(c_b, s_a2, a_srn_feats2)
-        x_ab2 = self.gen_b.decode(c_a, s_b2, b_srn_feats2)
+        # x_ab2 = self.gen_b.decode(c_a, s_b2, b_srn_feats2)
         # self.loss_diversity_loss_ba = - torch.mean(torch.abs(x_ba2 - x_ba))
         # self.loss_diversity_loss_ab = - torch.mean(torch.abs(x_ab2 - x_ab))
         self.loss_anti_collapse_ba = self.anti_collapse_criterion(
             s_a, s_a2, x_ba, x_ba2).mean()
-        self.loss_anti_collapse_ab = self.anti_collapse_criterion(
-            s_b, s_b2, x_ab, x_ab2).mean()
+        # self.loss_anti_collapse_ab = self.anti_collapse_criterion(
+            # s_b, s_b2, x_ab, x_ab2).mean()
 
         # latent reconstruction loss(style encoder branch)
         self.loss_gen_recon_real_s_a = self.style_recon_criterion(
             s_real_a_recon, s_a_prime)
-        self.loss_gen_recon_real_s_b = self.style_recon_criterion(
-            s_real_b_recon, s_b_prime)
-        self.loss_gen_recon_real_c_a = self.recon_criterion(
-            c_real_a_recon, c_a)
+        # self.loss_gen_recon_real_s_b = self.style_recon_criterion(
+            # s_real_b_recon, s_b_prime)
+        # self.loss_gen_recon_real_c_a = self.recon_criterion(
+            # c_real_a_recon, c_a)
         self.loss_gen_recon_real_c_b = self.recon_criterion(
             c_real_b_recon, c_b)
 
         # latent reconstruction loss(random sample branch)
         self.loss_gen_recon_s_a = self.style_recon_criterion(s_a_recon, s_a)
-        self.loss_gen_recon_s_b = self.style_recon_criterion(s_b_recon, s_b)
-        self.loss_gen_recon_c_a = self.recon_criterion(c_a_recon, c_a)
+        # self.loss_gen_recon_s_b = self.style_recon_criterion(s_b_recon, s_b)
+        # self.loss_gen_recon_c_a = self.recon_criterion(c_a_recon, c_a)
         self.loss_gen_recon_c_b = self.recon_criterion(c_b_recon, c_b)
 
-        self.loss_gen_cycrecon_x_a = self.recon_criterion(
-            x_aba, x_a) if hyperparameters['recon_x_cyc_w'] > 0 else 0
-        self.loss_gen_cycrecon_x_b = self.recon_criterion(
-            x_bab, x_b) if hyperparameters['recon_x_cyc_w'] > 0 else 0
+        # self.loss_gen_cycrecon_x_a = self.recon_criterion(
+            # x_aba, x_a) if hyperparameters['recon_x_cyc_w'] > 0 else 0
+        # self.loss_gen_cycrecon_x_b = self.recon_criterion(
+            # x_bab, x_b) if hyperparameters['recon_x_cyc_w'] > 0 else 0
 
         # GAN loss
         self.loss_gen_adv_a = self.dis_a.calc_gen_loss(x_ba)
-        self.loss_gen_adv_b = self.dis_b.calc_gen_loss(x_ab)
+        # self.loss_gen_adv_b = self.dis_b.calc_gen_loss(x_ab)
         self.loss_gen_adv_real_a = self.dis_a.calc_gen_loss(x_real_ba)
-        self.loss_gen_adv_real_b = self.dis_b.calc_gen_loss(x_real_ab)
+        # self.loss_gen_adv_real_b = self.dis_b.calc_gen_loss(x_real_ab)
         # domain-invariant perceptual loss
         self.loss_gen_vgg_a = self.compute_vgg_loss(
             self.vgg, x_ba, x_b) if hyperparameters['vgg_w'] > 0 else 0
-        self.loss_gen_vgg_b = self.compute_vgg_loss(
-            self.vgg, x_ab, x_a) if hyperparameters['vgg_w'] > 0 else 0
+        # self.loss_gen_vgg_b = self.compute_vgg_loss(
+            # self.vgg, x_ab, x_a) if hyperparameters['vgg_w'] > 0 else 0
         # total loss
+        # self.loss_gen_total = hyperparameters['gan_w'] * self.loss_gen_adv_a + \
+        #     hyperparameters['gan_w'] * self.loss_gen_adv_b + \
+        #     hyperparameters['gan_w'] * self.loss_gen_adv_real_a + \
+        #     hyperparameters['gan_w'] * self.loss_gen_adv_real_b + \
+        #     hyperparameters['recon_x_w'] * self.loss_gen_recon_x_a + \
+        #     hyperparameters['recon_s_w'] * self.loss_gen_recon_s_a + \
+        #     hyperparameters['recon_s_w'] * self.loss_gen_recon_real_s_a + \
+        #     hyperparameters['recon_c_w'] * self.loss_gen_recon_c_a + \
+        #     hyperparameters['recon_c_w'] * self.loss_gen_recon_real_c_a + \
+        #     hyperparameters['recon_x_w'] * self.loss_gen_recon_x_b + \
+        #     hyperparameters['recon_s_w'] * self.loss_gen_recon_s_b + \
+        #     hyperparameters['recon_s_w'] * self.loss_gen_recon_real_s_b + \
+        #     hyperparameters['recon_c_w'] * self.loss_gen_recon_c_b + \
+        #     hyperparameters['recon_c_w'] * self.loss_gen_recon_real_c_b + \
+        #     hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_a + \
+        #     hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_b + \
+        #     hyperparameters['vgg_w'] * self.loss_gen_vgg_a + \
+        #     hyperparameters['vgg_w'] * self.loss_gen_vgg_b + \
+        #     hyperparameters['ds_w'] * self.loss_anti_collapse_ab + \
+        #     hyperparameters['ds_w'] * self.loss_anti_collapse_ba
+
         self.loss_gen_total = hyperparameters['gan_w'] * self.loss_gen_adv_a + \
-            hyperparameters['gan_w'] * self.loss_gen_adv_b + \
             hyperparameters['gan_w'] * self.loss_gen_adv_real_a + \
-            hyperparameters['gan_w'] * self.loss_gen_adv_real_b + \
             hyperparameters['recon_x_w'] * self.loss_gen_recon_x_a + \
             hyperparameters['recon_s_w'] * self.loss_gen_recon_s_a + \
             hyperparameters['recon_s_w'] * self.loss_gen_recon_real_s_a + \
-            hyperparameters['recon_c_w'] * self.loss_gen_recon_c_a + \
-            hyperparameters['recon_c_w'] * self.loss_gen_recon_real_c_a + \
-            hyperparameters['recon_x_w'] * self.loss_gen_recon_x_b + \
-            hyperparameters['recon_s_w'] * self.loss_gen_recon_s_b + \
-            hyperparameters['recon_s_w'] * self.loss_gen_recon_real_s_b + \
             hyperparameters['recon_c_w'] * self.loss_gen_recon_c_b + \
             hyperparameters['recon_c_w'] * self.loss_gen_recon_real_c_b + \
-            hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_a + \
-            hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_b + \
-            hyperparameters['vgg_w'] * self.loss_gen_vgg_a + \
-            hyperparameters['vgg_w'] * self.loss_gen_vgg_b + \
-            hyperparameters['ds_w'] * self.loss_anti_collapse_ab + \
             hyperparameters['ds_w'] * self.loss_anti_collapse_ba
 
         # loss_dict = {'gen_adv_a': hyperparameters['gan_w'] * self.loss_gen_adv_a.item(),
@@ -455,37 +464,37 @@ class SANET_Trainer(nn.Module):
         self.dis_opt.zero_grad()
 
         # encode
-        c_a, _, a_feats = self.gen_a.encode(x_a)
-        c_b, _, b_feats = self.gen_b.encode(x_b)
 
-        c_a, s_a_prime, _ = self.gen_a.encode(x_a)
-        c_b, s_b_prime, _ = self.gen_b.encode(x_b)
+        c_a, s_a_prime, a_feats = self.gen_a.encode(x_a)
+        c_b, s_b_prime, b_feats = self.gen_b.encode(x_b)
 
         s_a = Variable(torch.randn(
             x_a.size(0), *c_a.size()[1:]).cuda())
-        s_b = Variable(torch.randn(
-            x_b.size(0), *c_b.size()[1:]).cuda())
+        # s_b = Variable(torch.randn(
+            # x_b.size(0), *c_b.size()[1:]).cuda())
 
         # decode (cross domain)
         x_ba = self.gen_a.decode(c_b, s_a, a_feats)
-        x_ab = self.gen_b.decode(c_a, s_b, b_feats)
+        # x_ab = self.gen_b.decode(c_a, s_b, b_feats)
 
         x_real_ba = self.gen_a.decode(c_b, s_a_prime)
-        x_real_ab = self.gen_b.decode(c_a, s_b_prime)
+        # x_real_ab = self.gen_b.decode(c_a, s_b_prime)
 
         # D loss
         self.loss_dis_a = self.dis_a.calc_dis_loss(x_ba.detach(), x_a)
-        self.loss_dis_b = self.dis_b.calc_dis_loss(x_ab.detach(), x_b)
+        # self.loss_dis_b = self.dis_b.calc_dis_loss(x_ab.detach(), x_b)
 
         self.loss_dis_real_a = self.dis_a.calc_dis_loss(
             x_real_ba.detach(), x_a)
-        self.loss_dis_real_b = self.dis_b.calc_dis_loss(
-            x_real_ab.detach(), x_b)
+        # self.loss_dis_real_b = self.dis_b.calc_dis_loss(
+            # x_real_ab.detach(), x_b)
 
-        self.loss_dis_total = hyperparameters['gan_w'] * self.loss_dis_a + hyperparameters['gan_w'] * self.loss_dis_b + \
-            hyperparameters['gan_w'] * self.loss_dis_real_a + hyperparameters[
-            'gan_w'] * self.loss_dis_real_b
+        # self.loss_dis_total = hyperparameters['gan_w'] * self.loss_dis_a + hyperparameters['gan_w'] * self.loss_dis_b + \
+            # hyperparameters['gan_w'] * self.loss_dis_real_a + hyperparameters[
+            # 'gan_w'] * self.loss_dis_real_b
 
+        self.loss_dis_total =  hyperparameters['gan_w'] * self.loss_dis_a + \
+            hyperparameters['gan_w'] * self.loss_dis_real_a 
         # loss_dict = {
         #     'dis_a': self.loss_dis_a.item(),
         #     'dis_b': self.loss_dis_b.item(),

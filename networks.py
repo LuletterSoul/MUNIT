@@ -423,10 +423,6 @@ class StyleEncoder(nn.Module):
         return self.model(x)
 
 
-<< << << < HEAD
-== == == =
-
-
 class MirrorStyleEncoder(nn.Module):
     def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type):
         super(MirrorStyleEncoder, self).__init__()
@@ -446,9 +442,6 @@ class MirrorStyleEncoder(nn.Module):
 
     def forward(self, x):
         return self.model(x)
-
-
->>>>>> > 3a9719cae4bf226755513a73abb0fe37e0dbfc7a
 
 
 class MultiLevelStyleEncoder(nn.Module):
